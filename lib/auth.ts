@@ -6,8 +6,10 @@ import { prisma } from './prisma'
 const insecureNextAuthSecret =
   !process.env.NEXTAUTH_SECRET ||
   process.env.NEXTAUTH_SECRET === 'your-secret-key-change-in-production'
+const isLocalNextAuthUrl = (process.env.NEXTAUTH_URL ?? '').includes('localhost')
+const isProductionDeployment = process.env.NODE_ENV === 'production' && !isLocalNextAuthUrl
 
-if (process.env.NODE_ENV === 'production' && insecureNextAuthSecret) {
+if (isProductionDeployment && insecureNextAuthSecret) {
   throw new Error('NEXTAUTH_SECRET must be set to a strong non-default value in production')
 }
 

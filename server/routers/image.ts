@@ -90,7 +90,7 @@ export const imageRouter = createTRPCRouter({
 
   delete: protectedProcedure
     .input(z.object({ id: z.string() }))
-    .mutation(async ({ ctx, input }) => {
+    .mutation(async () => {
       throw new TRPCError({
         code: 'FORBIDDEN',
         message: 'Hard delete is disabled for compliance and audit integrity',
