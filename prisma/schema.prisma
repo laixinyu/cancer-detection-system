@@ -1,0 +1,195 @@
+// This is your Prisma schema file
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  DOCTOR
+  PATIENT
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum ImageStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum FileType {
+  DICOM
+  JPEG
+  PNG
+  TIFF
+}
+
+enum DetectionStatus {
+  PENDING
+  REVIEWED
+  CONFIRMED
+}
+
+enum ReportStatus {
+  DRAFT
+  FINALIZED
+}
+
+enum ConsentType {
+  AI_ANALYSIS
+}
+
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  passwordHash  String    @map("password_hash")
+  role          Role
+  name          String
+  phone         String?
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  
+  patient       Patient?
+  uploadedImages Image[]  @relation("UploadedBy")
+  reviewedDetections Detection[] @relation("ReviewedBy")
+  reports       Report[]  @relation("DoctorReports")
+  consentsGiven PatientConsent[] @relation("ConsentGivenBy")
+  auditLogs     AuditLog[] @relation("AuditActor")
+
+  @@map("users")
+}
+
+model Patient {
+  id              String    @id @default(uuid())
+  userId          String    @unique @map("user_id")
+  dateOfBirth     DateTime  @map("date_of_birth")
+  gender          Gender
+  medicalHistory  String?   @map("medical_history") @db.Text
+  allergies       String?   @db.Text
+  familyHistory   String?   @map("family_history") @db.Text
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+  
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  images          Image[]
+  reports         Report[]
+  consents        PatientConsent[]
+
+  @@map("patients")
+}
+
+model Image {
+  id            String       @id @default(uuid())
+  patientId     String       @map("patient_id")
+  filePath      String       @map("file_path")
+  fileType      FileType     @map("file_type")
+  originalName  String       @map("original_name")
+  fileSize      Int          @map("file_size")
+  status        ImageStatus  @default(PENDING)
+  uploadedBy    String       @map("uploaded_by")
+  createdAt     DateTime     @default(now()) @map("created_at")
+  updatedAt     DateTime     @updatedAt @map("updated_at")
+  
+  patient       Patient      @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  uploader      User         @relation("UploadedBy", fields: [uploadedBy], references: [id])
+  detections    Detection[]
+
+  @@index([patientId])
+  @@index([uploadedBy])
+  @@map("images")
+}
+
+model Detection {
+  id                String           @id @default(uuid())
+  imageId           String           @map("image_id")
+  modelVersion      String           @map("model_version")
+  cancerProbability Float            @map("cancer_probability")
+  findings          Json
+  heatmapPath       String?          @map("heatmap_path")
+  status            DetectionStatus  @default(PENDING)
+  reviewedBy        String?          @map("reviewed_by")
+  reviewNotes       String?          @map("review_notes") @db.Text
+  createdAt         DateTime         @default(now()) @map("created_at")
+  updatedAt         DateTime         @updatedAt @map("updated_at")
+  
+  image             Image            @relation(fields: [imageId], references: [id], onDelete: Cascade)
+  reviewer          User?            @relation("ReviewedBy", fields: [reviewedBy], references: [id])
+  reports           Report[]
+
+  @@index([imageId])
+  @@index([reviewedBy])
+  @@map("detections")
+}
+
+model Report {
+  id            String       @id @default(uuid())
+  detectionId   String       @map("detection_id")
+  patientId     String       @map("patient_id")
+  doctorId      String       @map("doctor_id")
+  content       Json
+  pdfPath       String?      @map("pdf_path")
+  status        ReportStatus @default(DRAFT)
+  createdAt     DateTime     @default(now()) @map("created_at")
+  updatedAt     DateTime     @updatedAt @map("updated_at")
+  
+  detection     Detection    @relation(fields: [detectionId], references: [id], onDelete: Cascade)
+  patient       Patient      @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  doctor        User         @relation("DoctorReports", fields: [doctorId], references: [id])
+
+  @@index([detectionId])
+  @@index([patientId])
+  @@index([doctorId])
+  @@map("reports")
+}
+
+model PatientConsent {
+  id               String      @id @default(uuid())
+  patientId        String      @map("patient_id")
+  consentType      ConsentType @map("consent_type")
+  consentVersion   String      @map("consent_version")
+  accepted         Boolean     @default(true)
+  acceptedAt       DateTime    @default(now()) @map("accepted_at")
+  acceptedByUserId String      @map("accepted_by_user_id")
+  ipAddress        String?     @map("ip_address")
+  userAgent        String?     @map("user_agent")
+  createdAt        DateTime    @default(now()) @map("created_at")
+  updatedAt        DateTime    @updatedAt @map("updated_at")
+
+  patient          Patient     @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  acceptedBy       User        @relation("ConsentGivenBy", fields: [acceptedByUserId], references: [id], onDelete: Cascade)
+
+  @@unique([patientId, consentType, consentVersion])
+  @@index([patientId, consentType, acceptedAt(sort: Desc)])
+  @@index([acceptedByUserId])
+  @@map("patient_consents")
+}
+
+model AuditLog {
+  id          String    @id @default(uuid())
+  actorUserId String?   @map("actor_user_id")
+  actorRole   String?   @map("actor_role")
+  action      String
+  entityType  String    @map("entity_type")
+  entityId    String    @map("entity_id")
+  result      String
+  metadata    Json?
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  actorUser   User?     @relation("AuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([actorUserId, createdAt(sort: Desc)])
+  @@index([entityType, entityId, createdAt(sort: Desc)])
+  @@index([action, createdAt(sort: Desc)])
+  @@map("audit_logs")
+}

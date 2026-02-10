@@ -1,0 +1,61 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: cancer-detection-db
+    environment:
+      POSTGRES_USER: cancer_user
+      POSTGRES_PASSWORD: cancer_password
+      POSTGRES_DB: cancer_detection
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cancer_user"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: cancer-detection-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  ai-service:
+    build:
+      context: ./ai-service
+      dockerfile: Dockerfile
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
+        PIP_EXTRA_INDEX_URL: ${PIP_EXTRA_INDEX_URL:-}
+    container_name: cancer-detection-ai
+    environment:
+      AI_MODEL_PATH: ${AI_MODEL_PATH:-/app/models/cxr_multitask.onnx}
+      AI_MODEL_VERSION: ${AI_MODEL_VERSION:-cxr-multitask-v1}
+      AI_INPUT_SIZE: ${AI_INPUT_SIZE:-224}
+      AI_CALIBRATION_TEMPERATURE: ${AI_CALIBRATION_TEMPERATURE:-1.6}
+      AI_THRESHOLD_HIGH_SENS: ${AI_THRESHOLD_HIGH_SENS:-0.30}
+      AI_THRESHOLD_HIGH_SPEC: ${AI_THRESHOLD_HIGH_SPEC:-0.70}
+      AI_ENABLE_HEURISTIC_REGIONS: ${AI_ENABLE_HEURISTIC_REGIONS:-false}
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - ./ai-service/models:/app/models
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+  redis_data:
