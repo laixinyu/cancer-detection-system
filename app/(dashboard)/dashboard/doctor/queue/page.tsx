@@ -12,11 +12,17 @@ export default function DoctorQueuePage() {
   const { locale } = useI18n()
   const isZh = locale === 'zh'
   const [filter, setFilter] = useState<'ALL' | 'HIGH' | 'MEDIUM' | 'LOW'>('ALL')
-  const { data, isLoading, error } = api.detection.list.useQuery({
-    status: 'PENDING',
-    orderByPriority: true,
-    limit: 100,
-  })
+  const { data, isLoading, error } = api.detection.list.useQuery(
+    {
+      status: 'PENDING',
+      orderByPriority: true,
+      limit: 100,
+    },
+    {
+      refetchInterval: 10000,
+      refetchOnWindowFocus: true,
+    }
+  )
 
   const getScreeningSummary = (findings: unknown) => {
     if (!findings || typeof findings !== 'object') return null
@@ -194,9 +200,11 @@ export default function DoctorQueuePage() {
                               {isZh ? '开始审阅' : 'Start Review'}
                             </Button>
                           </Link>
-                          <Button variant="outline">
-                            {isZh ? '查看详情' : 'View Details'}
-                          </Button>
+                          <Link href={`/dashboard/doctor/review/${detection.id}`}>
+                            <Button variant="outline">
+                              {isZh ? '查看详情' : 'View Details'}
+                            </Button>
+                          </Link>
                         </div>
                       </div>
                     </div>

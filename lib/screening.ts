@@ -5,6 +5,45 @@ type TaskDecision = {
   highSpecificity: boolean
 }
 
+const infectionCoverageLabelMap = {
+  infectionAny: {
+    en: 'Any Infection Pattern',
+    zh: '感染总体风险',
+  },
+  viralPneumoniaLike: {
+    en: 'Viral Pneumonia-like',
+    zh: '病毒性肺炎样',
+  },
+  bacterialPneumoniaLike: {
+    en: 'Bacterial Pneumonia-like',
+    zh: '细菌性肺炎样',
+  },
+  covidLikeWhiteLungPattern: {
+    en: 'COVID-like White-lung Pattern',
+    zh: '类新冠白肺样',
+  },
+  atypicalInterstitialLike: {
+    en: 'Atypical Interstitial-like',
+    zh: '非典型间质样',
+  },
+  pulmonaryEdemaLike: {
+    en: 'Pulmonary Edema-like',
+    zh: '肺水肿样',
+  },
+  tbLikePattern: {
+    en: 'TB-like Pattern',
+    zh: '结核样模式',
+  },
+} as const
+
+export function getInfectionCoverageLabel(label: string, isZh: boolean): string {
+  const mapped = infectionCoverageLabelMap[label as keyof typeof infectionCoverageLabelMap]
+  if (mapped) {
+    return isZh ? mapped.zh : mapped.en
+  }
+  return label
+}
+
 function toNumber(value: unknown, fallback = 0): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback
 }

@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import ImageViewer from '@/components/image-viewer/image-viewer'
 import { api } from '@/lib/trpc'
 import { useI18n } from '@/components/i18n-provider'
+import { getInfectionCoverageLabel } from '@/lib/screening'
 
 type AnnotationRect = {
   id: string
@@ -477,7 +478,7 @@ export default function ReviewPage() {
                       .sort((a, b) => b[1] - a[1])
                       .map(([label, score]) => (
                         <div key={label} className="rounded border px-2 py-1 text-xs flex items-center justify-between">
-                          <span>{label}</span>
+                          <span>{getInfectionCoverageLabel(label, isZh)}</span>
                           <span className="font-semibold">{(score * 100).toFixed(1)}%</span>
                         </div>
                       ))}

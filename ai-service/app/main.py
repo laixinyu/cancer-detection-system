@@ -65,6 +65,8 @@ class ModelRunner:
         )
         self.detector_model_path = os.getenv("AI_DETECTOR_MODEL_PATH", "./models/cxr_detector.onnx")
         self.detector_input_size = int(os.getenv("AI_DETECTOR_INPUT_SIZE", "640"))
+        self.detector_input_width = self.detector_input_size
+        self.detector_input_height = self.detector_input_size
         self.detector_conf_threshold = float(os.getenv("AI_DETECTOR_CONF_THRESHOLD", "0.25"))
         self.detector_iou_threshold = float(os.getenv("AI_DETECTOR_IOU_THRESHOLD", "0.45"))
         self.detector_profile_path = os.getenv(
@@ -282,6 +284,7 @@ class ModelRunner:
                 resolved, sess_options=so, providers=["CPUExecutionProvider"]
             )
             self.detector_input_name = self.detector_session.get_inputs()[0].name
+            self._sync_detector_input_shape()
             self.detector_output_names = [o.name for o in self.detector_session.get_outputs()]
             self.detector_model_path = resolved
             self.detector_sha256 = self._file_sha256(resolved)
@@ -301,13 +304,29 @@ class ModelRunner:
             self.detector_check_passed = False
             self.detector_check_message = f"detector init or check failed: {exc}"
 
+    def _sync_detector_input_shape(self) -> None:
+        if self.detector_session is None:
+            return
+        shape = self.detector_session.get_inputs()[0].shape
+        if not isinstance(shape, list) or len(shape) < 4:
+            return
+
+        h = shape[2]
+        w = shape[3]
+        if isinstance(h, int) and h > 0:
+            self.detector_input_height = h
+        if isinstance(w, int) and w > 0:
+            self.detector_input_width = w
+        if self.detector_input_height == self.detector_input_width:
+            self.detector_input_size = self.detector_input_height
+
     def _run_detector_startup_check(self) -> Tuple[bool, str]:
         if self.detector_session is None or self.detector_input_name is None:
             return False, "detector session unavailable"
 
         try:
             sample = np.random.rand(
-                1, 1, self.detector_input_size, self.detector_input_size
+                1, 1, self.detector_input_height, self.detector_input_width
             ).astype(np.float32)
             outputs = self.detector_session.run(None, {self.detector_input_name: sample})
             if not outputs:
@@ -643,8 +662,8 @@ class ModelRunner:
         if out.ndim != 2:
             return regions
 
-        det_w = self.detector_input_size
-        det_h = self.detector_input_size
+        det_w = self.detector_input_width
+        det_h = self.detector_input_height
         sx = orig_w / max(det_w, 1)
         sy = orig_h / max(det_h, 1)
 
@@ -697,7 +716,7 @@ class ModelRunner:
         if self.detector_session is None or self.detector_input_name is None:
             return [], {label: 0.0 for label in TASK_LABELS}
 
-        resized = cv2.resize(image_original, (self.detector_input_size, self.detector_input_size))
+        resized = cv2.resize(image_original, (self.detector_input_width, self.detector_input_height))
         normalized = resized.astype(np.float32) / max(float(self.detector_profile.get("input_scale", 1.0)), 1e-6)
         input_channels = int(self.detector_profile.get("input_channels", 1))
         input_mean = self.detector_profile.get("input_mean", [0.0])
@@ -728,11 +747,11 @@ class ModelRunner:
             scores[r.label] = max(scores.get(r.label, 0.0), r.confidence)
         return decoded, scores
 
-    def detect_regions(self, image_norm: np.ndarray, label_scores: Dict[str, float]) -> Tuple[List[Region], Dict[str, float]]:
+    def detect_regions(self, image_original: np.ndarray, label_scores: Dict[str, float]) -> Tuple[List[Region], Dict[str, float]]:
         if not self.enable_heuristic_regions:
             return [], {label: 0.0 for label in TASK_LABELS}
 
-        image_u8 = (image_norm * 255).astype(np.uint8)
+        image_u8 = image_original.astype(np.uint8)
         clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
         enhanced = clahe.apply(image_u8)
         threshold_value = int(np.percentile(enhanced, 92))
@@ -850,7 +869,7 @@ async def predict(file: UploadFile = File(...)):
         model_scores = runner.infer_multitask_scores(image_norm)
         regions, region_scores = runner.detect_regions_with_detector(image_original)
         if not regions and runner.enable_heuristic_regions:
-            regions, region_scores = runner.detect_regions(image_norm, model_scores)
+            regions, region_scores = runner.detect_regions(image_original, model_scores)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Inference failed: {exc}") from exc
 

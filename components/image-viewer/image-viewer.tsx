@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { useI18n } from '@/components/i18n-provider'
@@ -21,6 +21,50 @@ interface ImageViewerProps {
   detections?: AnnotationRect[]
   editable?: boolean
   onAnnotationAdd?: (annotation: AnnotationRect) => void
+}
+
+function remapAnnotationSpace(
+  annotations: AnnotationRect[],
+  imageWidth: number,
+  imageHeight: number
+): AnnotationRect[] {
+  if (!annotations.length || imageWidth <= 0 || imageHeight <= 0) return annotations
+
+  const maxX = Math.max(...annotations.map((a) => a.x + a.width))
+  const maxY = Math.max(...annotations.map((a) => a.y + a.height))
+
+  // Case 1: normalized coords in [0, 1]
+  if (maxX <= 1.5 && maxY <= 1.5) {
+    return annotations.map((a) => ({
+      ...a,
+      x: a.x * imageWidth,
+      y: a.y * imageHeight,
+      width: a.width * imageWidth,
+      height: a.height * imageHeight,
+    }))
+  }
+
+  // Case 2: legacy heuristic boxes produced in 224x224 model space.
+  // These should be projected back to original image pixel space.
+  const likely224Space =
+    maxX <= 256 &&
+    maxY <= 256 &&
+    imageWidth >= 512 &&
+    imageHeight >= 512
+
+  if (likely224Space) {
+    const sx = imageWidth / 224
+    const sy = imageHeight / 224
+    return annotations.map((a) => ({
+      ...a,
+      x: a.x * sx,
+      y: a.y * sy,
+      width: a.width * sx,
+      height: a.height * sy,
+    }))
+  }
+
+  return annotations
 }
 
 export default function ImageViewer({ 
@@ -49,6 +93,11 @@ export default function ImageViewer({
   useEffect(() => {
     setAnnotations(detections)
   }, [detections])
+
+  const displayAnnotations = useMemo(
+    () => remapAnnotationSpace(annotations, imageSize.width, imageSize.height),
+    [annotations, imageSize.width, imageSize.height]
+  )
 
   useEffect(() => {
     initializedRef.current = false
@@ -271,7 +320,7 @@ export default function ImageViewer({
                       height={imageSize.height}
                       viewBox={`0 0 ${imageSize.width} ${imageSize.height}`}
                     >
-                      {annotations.map((ann) => (
+                      {displayAnnotations.map((ann) => (
                         <g key={ann.id}>
                           <rect
                             x={ann.x}
@@ -345,7 +394,7 @@ export default function ImageViewer({
               {t('viewer.findings', { count: annotations.length })}
             </h3>
             <div className="space-y-2">
-              {annotations.map((ann) => (
+              {displayAnnotations.map((ann) => (
                 <div
                   key={ann.id}
                   className="p-2 bg-gray-50 rounded text-sm"

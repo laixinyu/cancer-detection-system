@@ -148,6 +148,9 @@ export async function POST(request: Request) {
       },
     })
 
+    let aiDetectionSucceeded = false
+    let aiFailureReason = ''
+
     try {
       const aiResult = await requestAiDetection(file)
       const screeningSummary = buildScreeningSummary(aiResult)
@@ -189,8 +192,10 @@ export async function POST(request: Request) {
         where: { id: image.id },
         data: { status: 'COMPLETED' },
       })
+      aiDetectionSucceeded = true
     } catch (error) {
       console.error('AI detection error:', error)
+      aiFailureReason = error instanceof Error ? error.message : 'Unknown AI error'
       await prisma.image.update({
         where: { id: image.id },
         data: { status: 'FAILED' },
@@ -203,9 +208,49 @@ export async function POST(request: Request) {
         entityId: image.id,
         result: 'FAILED',
         metadata: {
-          reason: error instanceof Error ? error.message : 'Unknown AI error',
+          reason: aiFailureReason,
         },
       })
+    }
+
+    const latestImage = await prisma.image.findUnique({
+      where: { id: image.id },
+      select: {
+        id: true,
+        originalName: true,
+        filePath: true,
+        status: true,
+      },
+    })
+
+    if (!aiDetectionSucceeded) {
+      await writeAuditLog(prisma, {
+        actorUserId: session.user.id,
+        actorRole: session.user.role,
+        action: 'IMAGE_UPLOAD',
+        entityType: 'image',
+        entityId: image.id,
+        result: 'FAILED',
+        metadata: {
+          fileType,
+          fileSize: file.size,
+          reason: aiFailureReason,
+        },
+      })
+
+      return NextResponse.json(
+        {
+          error: 'AI detection failed',
+          details: aiFailureReason,
+          image: {
+            id: latestImage?.id ?? image.id,
+            originalName: latestImage?.originalName ?? image.originalName,
+            filePath: latestImage?.filePath ?? image.filePath,
+            status: latestImage?.status ?? image.status,
+          },
+        },
+        { status: 502 }
+      )
     }
 
     await writeAuditLog(prisma, {
@@ -218,16 +263,6 @@ export async function POST(request: Request) {
       metadata: {
         fileType,
         fileSize: file.size,
-      },
-    })
-
-    const latestImage = await prisma.image.findUnique({
-      where: { id: image.id },
-      select: {
-        id: true,
-        originalName: true,
-        filePath: true,
-        status: true,
       },
     })
 

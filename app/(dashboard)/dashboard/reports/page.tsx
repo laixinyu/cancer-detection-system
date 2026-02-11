@@ -4,10 +4,9 @@ import { useRef, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { formatDate } from '@/lib/utils'
-import jsPDF from 'jspdf'
-import html2canvas from 'html2canvas'
 import { api } from '@/lib/trpc'
 import { useI18n } from '@/components/i18n-provider'
+import { getInfectionCoverageLabel } from '@/lib/screening'
 
 type ReportContent = {
   diagnosis?: string
@@ -48,6 +47,7 @@ export default function ReportsPage() {
   const isZh = locale === 'zh'
   const [selectedReportId, setSelectedReportId] = useState<string | null>(null)
   const [exportingPDF, setExportingPDF] = useState(false)
+  const [exportError, setExportError] = useState<string | null>(null)
   const reportRef = useRef<HTMLDivElement>(null)
 
   const { data, isLoading, error } = api.report.list.useQuery({
@@ -63,21 +63,69 @@ export default function ReportsPage() {
     if (!reportRef.current || !selectedReport) return
 
     setExportingPDF(true)
+    setExportError(null)
     try {
-      const canvas = await html2canvas(reportRef.current, {
+      const [{ default: html2canvas }, jspdfModule] = await Promise.all([
+        import('html2canvas'),
+        import('jspdf'),
+      ])
+      const JsPdfCtor = jspdfModule.jsPDF ?? jspdfModule.default
+      if (!JsPdfCtor) {
+        throw new Error('jsPDF constructor is unavailable')
+      }
+
+      const target = reportRef.current
+      const canvas = await html2canvas(target, {
         scale: 2,
         useCORS: true,
+        backgroundColor: '#ffffff',
+        windowWidth: target.scrollWidth,
+        windowHeight: target.scrollHeight,
+        onclone: (clonedDoc) => {
+          const style = clonedDoc.createElement('style')
+          style.textContent = `
+            * {
+              color: #111827 !important;
+              border-color: #d1d5db !important;
+              text-decoration-color: #111827 !important;
+              box-shadow: none !important;
+            }
+            .text-blue-600 { color: #2563eb !important; }
+            .text-red-600 { color: #dc2626 !important; }
+            .text-gray-600 { color: #4b5563 !important; }
+            .text-gray-700 { color: #374151 !important; }
+            .text-gray-900 { color: #111827 !important; }
+            .bg-white { background-color: #ffffff !important; }
+            .bg-gray-50 { background-color: #f9fafb !important; }
+          `
+          clonedDoc.head.appendChild(style)
+        },
       })
 
       const imgData = canvas.toDataURL('image/png')
-      const pdf = new jsPDF('p', 'mm', 'a4')
+      const pdf = new JsPdfCtor({ orientation: 'p', unit: 'mm', format: 'a4' })
       const pdfWidth = pdf.internal.pageSize.getWidth()
-      const pdfHeight = (canvas.height * pdfWidth) / canvas.width
+      const pdfHeight = pdf.internal.pageSize.getHeight()
+      const imageHeightMm = (canvas.height * pdfWidth) / canvas.width
 
-      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight)
+      let heightLeft = imageHeightMm
+      let y = 0
+      pdf.addImage(imgData, 'PNG', 0, y, pdfWidth, imageHeightMm)
+      heightLeft -= pdfHeight
+
+      while (heightLeft > 0) {
+        y = heightLeft - imageHeightMm
+        pdf.addPage()
+        pdf.addImage(imgData, 'PNG', 0, y, pdfWidth, imageHeightMm)
+        heightLeft -= pdfHeight
+      }
+
       pdf.save(`report_${selectedReport.id}_${Date.now()}.pdf`)
     } catch (e) {
       console.error('Error generating PDF:', e)
+      const message =
+        e instanceof Error ? e.message : isZh ? '导出失败，请重试' : 'Export failed, please retry'
+      setExportError(message)
     } finally {
       setExportingPDF(false)
     }
@@ -173,6 +221,11 @@ export default function ReportsPage() {
                 </Button>
               </CardHeader>
               <CardContent>
+                {exportError && (
+                  <div className="mb-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                    {isZh ? `导出失败：${exportError}` : `Export failed: ${exportError}`}
+                  </div>
+                )}
                 <div ref={reportRef} className="bg-white p-8 space-y-6">
                   <div className="text-center border-b pb-6">
                     <h1 className="text-2xl font-bold text-blue-600">{isZh ? '医学影像报告' : 'MEDICAL IMAGING REPORT'}</h1>
@@ -254,7 +307,7 @@ export default function ReportsPage() {
                                   .slice(0, 3)
                                   .map(([label, score]) => (
                                     <div key={label} className="text-xs flex items-center justify-between">
-                                      <span>{label}</span>
+                                      <span>{getInfectionCoverageLabel(label, isZh)}</span>
                                       <span className="font-medium">{(score * 100).toFixed(1)}%</span>
                                     </div>
                                   ))}

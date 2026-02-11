@@ -15,7 +15,8 @@ interface UploadedFile {
 }
 
 export default function ImageUpload() {
-  const { t } = useI18n()
+  const { t, locale } = useI18n()
+  const isZh = locale === 'zh'
   const [files, setFiles] = useState<UploadedFile[]>([])
   const [consentAccepted, setConsentAccepted] = useState(false)
   const consentVersion = 'v1.0'
@@ -63,8 +64,22 @@ export default function ImageUpload() {
           body: formData,
         })
 
+        const result = await response.json().catch(() => null)
+
         if (!response.ok) {
-          throw new Error(t('imageUpload.uploadFailed'))
+          const message =
+            (result && typeof result.error === 'string' && result.error) ||
+            (result && typeof result.details === 'string' && result.details) ||
+            t('imageUpload.uploadFailed')
+          throw new Error(message)
+        }
+
+        if (!result?.image || result.image.status !== 'COMPLETED') {
+          throw new Error(
+            isZh
+              ? 'AI 分析未完成，请稍后重试上传'
+              : 'AI analysis did not complete. Please retry upload.'
+          )
         }
 
         setFiles(prev => prev.map((f, idx) => 
@@ -74,12 +89,16 @@ export default function ImageUpload() {
         setFiles(prev => prev.map((f, idx) => 
           idx === i ? { ...f, status: 'success' as const, progress: 100 } : f
         ))
-      } catch {
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error && error.message
+            ? error.message
+            : t('imageUpload.uploadFailed')
         setFiles(prev => prev.map((f, idx) => 
           idx === i ? { 
             ...f, 
             status: 'error' as const, 
-            error: t('imageUpload.uploadFailed')
+            error: errorMessage
           } : f
         ))
       }
