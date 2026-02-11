@@ -135,6 +135,32 @@ function extractStringField(findings: unknown, field: string, fallback = ''): st
   return typeof value === 'string' ? value : fallback
 }
 
+function extractScreeningSummary(findings: unknown): {
+  pneumoniaScore?: number
+  lesionScore?: number
+  overallScore?: number
+  triagePriority?: string
+  suspectedConditions?: string[]
+  recommendations?: string[]
+} | null {
+  if (!findings || typeof findings !== 'object') return null
+  const summary = (findings as { screeningSummary?: unknown }).screeningSummary
+  if (!summary || typeof summary !== 'object') return null
+  const s = summary as Record<string, unknown>
+  return {
+    pneumoniaScore: typeof s.pneumoniaScore === 'number' ? s.pneumoniaScore : undefined,
+    lesionScore: typeof s.lesionScore === 'number' ? s.lesionScore : undefined,
+    overallScore: typeof s.overallScore === 'number' ? s.overallScore : undefined,
+    triagePriority: typeof s.triagePriority === 'string' ? s.triagePriority : undefined,
+    suspectedConditions: Array.isArray(s.suspectedConditions)
+      ? s.suspectedConditions.filter((v): v is string => typeof v === 'string')
+      : undefined,
+    recommendations: Array.isArray(s.recommendations)
+      ? s.recommendations.filter((v): v is string => typeof v === 'string')
+      : undefined,
+  }
+}
+
 export default function ReviewPage() {
   const { locale } = useI18n()
   const isZh = locale === 'zh'
@@ -189,6 +215,10 @@ export default function ReviewPage() {
     () => extractStringField(detection?.findings, 'clinicalUse', 'RESEARCH_ONLY'),
     [detection?.findings]
   )
+  const screeningSummary = useMemo(
+    () => extractScreeningSummary(detection?.findings),
+    [detection?.findings]
+  )
 
   const handleSubmit = async () => {
     if (!detectionId || !notes.trim() || !detection) {
@@ -218,6 +248,7 @@ export default function ReviewPage() {
         diagnosis,
         findings: topFindings,
         labelScores,
+        screeningSummary,
         decisionHighSensitivity,
         decisionHighSpecificity,
         calibrationTemperature,
@@ -405,6 +436,30 @@ export default function ReviewPage() {
               </div>
             </div>
           </div>
+
+          {screeningSummary && (
+            <div className="mt-6 rounded border p-4">
+              <div className="text-sm font-semibold mb-2">{isZh ? '核心筛查摘要' : 'Core Screening Summary'}</div>
+              <div className="grid md:grid-cols-4 gap-3 text-sm">
+                <div>
+                  <div className="text-gray-600">{isZh ? '肺炎风险' : 'Pneumonia Risk'}</div>
+                  <div className="font-semibold">{((screeningSummary.pneumoniaScore ?? 0) * 100).toFixed(1)}%</div>
+                </div>
+                <div>
+                  <div className="text-gray-600">{isZh ? '病灶风险' : 'Lesion Risk'}</div>
+                  <div className="font-semibold">{((screeningSummary.lesionScore ?? 0) * 100).toFixed(1)}%</div>
+                </div>
+                <div>
+                  <div className="text-gray-600">{isZh ? '综合风险' : 'Overall Risk'}</div>
+                  <div className="font-semibold">{((screeningSummary.overallScore ?? 0) * 100).toFixed(1)}%</div>
+                </div>
+                <div>
+                  <div className="text-gray-600">{isZh ? '分诊优先级' : 'Triage Priority'}</div>
+                  <div className="font-semibold">{screeningSummary.triagePriority ?? 'N/A'}</div>
+                </div>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 

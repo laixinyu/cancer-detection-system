@@ -13,6 +13,12 @@ type ReportContent = {
   diagnosis?: string
   findings?: string[]
   recommendations?: string
+  screeningSummary?: {
+    pneumoniaScore?: number
+    lesionScore?: number
+    overallScore?: number
+    triagePriority?: string
+  }
 }
 
 function normalizeReportContent(content: unknown): ReportContent {
@@ -28,6 +34,10 @@ function normalizeReportContent(content: unknown): ReportContent {
       : undefined,
     recommendations:
       typeof c.recommendations === 'string' ? c.recommendations : undefined,
+    screeningSummary:
+      c.screeningSummary && typeof c.screeningSummary === 'object'
+        ? (c.screeningSummary as ReportContent['screeningSummary'])
+        : undefined,
   }
 }
 
@@ -207,6 +217,28 @@ export default function ReportsPage() {
                           {(selectedReport.detection.cancerProbability * 100).toFixed(1)}%
                         </span>
                       </p>
+                      {reportContent.screeningSummary && (
+                        <>
+                          <p>
+                            <span className="text-gray-600">{isZh ? '肺炎风险：' : 'Pneumonia Risk:'}</span>{' '}
+                            <span className="font-medium">
+                              {((reportContent.screeningSummary.pneumoniaScore ?? 0) * 100).toFixed(1)}%
+                            </span>
+                          </p>
+                          <p>
+                            <span className="text-gray-600">{isZh ? '病灶风险：' : 'Lesion Risk:'}</span>{' '}
+                            <span className="font-medium">
+                              {((reportContent.screeningSummary.lesionScore ?? 0) * 100).toFixed(1)}%
+                            </span>
+                          </p>
+                          <p>
+                            <span className="text-gray-600">{isZh ? '分诊优先级：' : 'Triage Priority:'}</span>{' '}
+                            <span className="font-medium">
+                              {reportContent.screeningSummary.triagePriority ?? 'N/A'}
+                            </span>
+                          </p>
+                        </>
+                      )}
                     </div>
                   </div>
 

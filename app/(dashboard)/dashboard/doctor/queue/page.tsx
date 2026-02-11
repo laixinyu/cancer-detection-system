@@ -18,6 +18,18 @@ export default function DoctorQueuePage() {
     limit: 100,
   })
 
+  const getScreeningSummary = (findings: unknown) => {
+    if (!findings || typeof findings !== 'object') return null
+    const summary = (findings as { screeningSummary?: unknown }).screeningSummary
+    if (!summary || typeof summary !== 'object') return null
+    return summary as {
+      triagePriority?: 'CRITICAL' | 'HIGH' | 'ROUTINE'
+      pneumoniaScore?: number
+      lesionScore?: number
+      suspectedConditions?: string[]
+    }
+  }
+
   const getRiskLevel = (probability: number) => {
     if (probability < 0.3) return { text: isZh ? '低风险' : 'Low Risk', color: 'text-green-600 bg-green-100', priority: isZh ? '低' : 'Low' }
     if (probability < 0.7) return { text: isZh ? '中风险' : 'Medium Risk', color: 'text-yellow-600 bg-yellow-100', priority: isZh ? '中' : 'Medium' }
@@ -25,17 +37,28 @@ export default function DoctorQueuePage() {
   }
 
   const detections = useMemo(() => data?.detections ?? [], [data?.detections])
+  const getPriorityBucket = (detection: (typeof detections)[number]) => {
+    const summary = getScreeningSummary(detection.findings)
+    const triage = summary?.triagePriority
+    if (triage === 'CRITICAL') return 'HIGH'
+    if (triage === 'HIGH') return 'MEDIUM'
+    if (triage === 'ROUTINE') return 'LOW'
+    if (detection.cancerProbability >= 0.7) return 'HIGH'
+    if (detection.cancerProbability >= 0.3) return 'MEDIUM'
+    return 'LOW'
+  }
+
   const stats = useMemo(() => {
-    const high = detections.filter((d) => d.cancerProbability >= 0.7).length
-    const medium = detections.filter((d) => d.cancerProbability >= 0.3 && d.cancerProbability < 0.7).length
-    const low = detections.filter((d) => d.cancerProbability < 0.3).length
+    const high = detections.filter((d) => getPriorityBucket(d) === 'HIGH').length
+    const medium = detections.filter((d) => getPriorityBucket(d) === 'MEDIUM').length
+    const low = detections.filter((d) => getPriorityBucket(d) === 'LOW').length
     return { high, medium, low, all: detections.length }
   }, [detections])
 
   const visibleDetections = useMemo(() => {
-    if (filter === 'HIGH') return detections.filter((d) => d.cancerProbability >= 0.7)
-    if (filter === 'MEDIUM') return detections.filter((d) => d.cancerProbability >= 0.3 && d.cancerProbability < 0.7)
-    if (filter === 'LOW') return detections.filter((d) => d.cancerProbability < 0.3)
+    if (filter === 'HIGH') return detections.filter((d) => getPriorityBucket(d) === 'HIGH')
+    if (filter === 'MEDIUM') return detections.filter((d) => getPriorityBucket(d) === 'MEDIUM')
+    if (filter === 'LOW') return detections.filter((d) => getPriorityBucket(d) === 'LOW')
     return detections
   }, [detections, filter])
 
@@ -94,6 +117,10 @@ export default function DoctorQueuePage() {
         <div className="space-y-4">
           {visibleDetections.map((detection) => {
             const risk = getRiskLevel(detection.cancerProbability)
+            const summary = getScreeningSummary(detection.findings)
+            const pneumoniaScore = typeof summary?.pneumoniaScore === 'number' ? summary.pneumoniaScore : 0
+            const lesionScore = typeof summary?.lesionScore === 'number' ? summary.lesionScore : detection.cancerProbability
+            const conditions = Array.isArray(summary?.suspectedConditions) ? summary.suspectedConditions : []
             
             return (
               <Card key={detection.id} className="hover:shadow-md transition-shadow">
@@ -142,8 +169,21 @@ export default function DoctorQueuePage() {
 
                       {/* Model Info */}
                       <div className="mt-3 pt-3 border-t flex items-center justify-between">
-                        <div className="text-xs text-gray-500">
-                          {isZh ? '模型：' : 'Model: '}{detection.modelVersion} • {isZh ? '状态：' : 'Status: '}{detection.status}
+                        <div className="text-xs text-gray-500 space-y-1">
+                          <div>
+                            {isZh ? '模型：' : 'Model: '}{detection.modelVersion} • {isZh ? '状态：' : 'Status: '}{detection.status}
+                          </div>
+                          <div>
+                            {isZh ? '肺炎风险：' : 'Pneumonia Risk: '}
+                            {(pneumoniaScore * 100).toFixed(1)}% • {isZh ? '病灶风险：' : 'Lesion Risk: '}
+                            {(lesionScore * 100).toFixed(1)}%
+                          </div>
+                          {conditions.length > 0 && (
+                            <div>
+                              {isZh ? '可疑项：' : 'Suspicion: '}
+                              {conditions.join(', ')}
+                            </div>
+                          )}
                         </div>
                         <div className="flex gap-2">
                           <Link href={`/dashboard/doctor/review/${detection.id}`}>

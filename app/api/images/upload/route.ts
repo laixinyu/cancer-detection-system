@@ -9,6 +9,7 @@ import { prisma } from '@/lib/prisma'
 import { CLINICAL_SCOPE } from '@/server/compliance/workflow'
 import { writeAuditLog } from '@/server/compliance/audit'
 import { requestAiDetection } from '@/lib/ai-service'
+import { buildScreeningSummary } from '@/lib/screening'
 
 export async function POST(request: Request) {
   try {
@@ -149,8 +150,11 @@ export async function POST(request: Request) {
 
     try {
       const aiResult = await requestAiDetection(file)
+      const screeningSummary = buildScreeningSummary(aiResult)
       const triage =
-        aiResult.cancerProbability >= CLINICAL_SCOPE.highRiskThreshold
+        screeningSummary.triagePriority === 'CRITICAL' || screeningSummary.triagePriority === 'HIGH'
+          ? 'HIGH_RISK'
+          : aiResult.cancerProbability >= CLINICAL_SCOPE.highRiskThreshold
           ? 'HIGH_RISK'
           : 'ROUTINE'
 
@@ -172,6 +176,7 @@ export async function POST(request: Request) {
             clinicalUse: aiResult.clinicalUse ?? 'RESEARCH_ONLY',
             clinicalStage: aiResult.clinicalStage ?? aiResult.clinicalUse ?? 'RESEARCH_ONLY',
             detectorModelLoaded: aiResult.detectorModelLoaded ?? false,
+            screeningSummary,
           } as unknown as Prisma.InputJsonValue,
           heatmapPath: aiResult.heatmapPath,
           status: 'PENDING',

@@ -9,6 +9,10 @@ AI-assisted chest X-ray screening platform with role-based workflow for patient 
 - AI tasks:
   - A: Pneumonia risk
   - B: Nodule/Mass lesion risk
+- Core screening workflow:
+  - Unified `screeningSummary` generated on upload (pneumonia + lesion + triage priority)
+  - Doctor queue prioritization uses screening triage when available
+  - Review and report pages display structured screening metrics
 - Compliance posture:
   - Heuristic pseudo bounding boxes are disabled by default
   - Output marked `RESEARCH_ONLY` (non-clinical use)
