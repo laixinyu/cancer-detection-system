@@ -1,0 +1,19 @@
+{
+  "deploymentStage": "RESEARCH_ONLY",
+  "approvedBy": "medical-ai-committee",
+  "approvedAt": "2026-01-01T00:00:00Z",
+  "validationEvidence": {
+    "externalValidation": {
+      "siteCount": 2,
+      "nSamples": 0,
+      "auroc": 0.91,
+      "sensitivity": 0.92,
+      "specificity": 0.86
+    },
+    "regulatory": {
+      "status": "IRB_APPROVED",
+      "documentId": ""
+    }
+  },
+  "notes": "For CLINICAL_DECISION_SUPPORT, regulatory.status should be APPROVED/CLEARED/CERTIFIED and metrics must meet configured gate thresholds."
+}

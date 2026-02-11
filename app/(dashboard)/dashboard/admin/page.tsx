@@ -10,6 +10,17 @@ export default function AdminPage() {
   const { locale } = useI18n()
   const isZh = locale === 'zh'
   const { data, isLoading, error } = api.analytics.adminOverview.useQuery()
+  const { data: opsDashboard } = api.ops.dashboard.useQuery()
+  const { data: readiness } = api.ops.readiness.useQuery(undefined, { refetchInterval: 15000 })
+  const { data: incidents } = api.ops.listIncidents.useQuery({ limit: 8 })
+  const incidentList = (incidents ?? []) as Array<{
+    id: string
+    title: string
+    severity: string
+    status: string
+    source: string
+    openedAt: Date
+  }>
 
   if (isLoading) {
     return <div className="p-6 text-gray-500">{isZh ? '正在加载管理分析...' : 'Loading admin analytics...'}</div>
@@ -67,6 +78,56 @@ export default function AdminPage() {
           <CardContent>
             <div className="text-3xl font-bold text-orange-600">{stats.reports}</div>
             <div className="mt-2 text-sm text-gray-500">{stats.finalizedReports} {isZh ? '已定稿' : 'finalized'}</div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid md:grid-cols-3 gap-6">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm text-gray-600">{isZh ? '系统就绪状态' : 'System Readiness'}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className={`text-2xl font-bold ${readiness?.overallReady ? 'text-green-600' : 'text-red-600'}`}>
+              {readiness?.overallReady ? (isZh ? '就绪' : 'READY') : (isZh ? '未就绪' : 'NOT READY')}
+            </div>
+            <div className="mt-2 text-sm text-gray-500">
+              DB: {readiness?.db.ready ? 'OK' : 'DOWN'} • AI: {readiness?.ai.aiReachable ? 'OK' : 'DOWN'}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm text-gray-600">{isZh ? '临床证据门禁' : 'Clinical Evidence Gate'}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div
+              className={`text-2xl font-bold ${
+                opsDashboard?.evidenceGate?.pass ? 'text-green-600' : 'text-amber-600'
+              }`}
+            >
+              {opsDashboard?.evidenceGate?.pass ? (isZh ? '通过' : 'PASS') : (isZh ? '未通过' : 'NOT PASS')}
+            </div>
+            <div className="mt-2 text-sm text-gray-500">
+              {opsDashboard?.latestEvidence
+                ? `${opsDashboard.latestEvidence.modelVersion} • ${formatDate(opsDashboard.latestEvidence.createdAt)}`
+                : isZh
+                ? '暂无证据记录'
+                : 'No evidence record'}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm text-gray-600">{isZh ? '高优先级事件' : 'High Priority Incidents'}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold text-red-600">{opsDashboard?.p0p1Incidents ?? 0}</div>
+            <div className="mt-2 text-sm text-gray-500">
+              {isZh ? '未关闭总事件' : 'Open incidents'}: {opsDashboard?.openIncidents ?? 0}
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -148,6 +209,33 @@ export default function AdminPage() {
                 <div className="text-xs text-gray-500 mt-1">
                   {isZh ? '操作人' : 'Actor'}: {activity.actorUser?.name ?? (isZh ? '系统' : 'system')} • {formatDate(activity.createdAt)}
                 </div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>{isZh ? '运维事件' : 'Operational Incidents'}</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-3">
+            {incidentList.length === 0 && (
+              <div className="text-sm text-gray-500">{isZh ? '暂无事件' : 'No incidents'}</div>
+            )}
+            {incidentList.map((incident) => (
+              <div key={incident.id} className="p-3 bg-gray-50 rounded">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-sm font-medium">{incident.title}</div>
+                  <div className="text-xs text-gray-600">
+                    {incident.severity} • {incident.status}
+                  </div>
+                </div>
+                <div className="text-xs text-gray-600 mt-1">
+                  {isZh ? '来源' : 'Source'}: {incident.source}
+                </div>
+                <div className="text-xs text-gray-500 mt-1">{formatDate(incident.openedAt)}</div>
               </div>
             ))}
           </div>

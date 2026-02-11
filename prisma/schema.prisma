@@ -50,60 +50,97 @@ enum ConsentType {
   AI_ANALYSIS
 }
 
+enum RegulatoryStatus {
+  NOT_SUBMITTED
+  SUBMITTED
+  APPROVED
+  REJECTED
+}
+
+enum DeploymentStage {
+  RESEARCH_ONLY
+  PILOT_DECISION_SUPPORT
+  CLINICAL_DECISION_SUPPORT
+}
+
+enum OpsIncidentSource {
+  AI_SERVICE
+  APP
+  DATABASE
+  PIPELINE
+  SECURITY
+  OTHER
+}
+
+enum OpsIncidentSeverity {
+  P0
+  P1
+  P2
+  P3
+}
+
+enum OpsIncidentStatus {
+  OPEN
+  ACKNOWLEDGED
+  RESOLVED
+}
+
 model User {
-  id            String    @id @default(uuid())
-  email         String    @unique
-  passwordHash  String    @map("password_hash")
-  role          Role
-  name          String
-  phone         String?
-  createdAt     DateTime  @default(now()) @map("created_at")
-  updatedAt     DateTime  @updatedAt @map("updated_at")
-  
-  patient       Patient?
-  uploadedImages Image[]  @relation("UploadedBy")
-  reviewedDetections Detection[] @relation("ReviewedBy")
-  reports       Report[]  @relation("DoctorReports")
-  consentsGiven PatientConsent[] @relation("ConsentGivenBy")
-  auditLogs     AuditLog[] @relation("AuditActor")
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  role         Role
+  name         String
+  phone        String?
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  patient            Patient?
+  uploadedImages     Image[]               @relation("UploadedBy")
+  reviewedDetections Detection[]           @relation("ReviewedBy")
+  reports            Report[]              @relation("DoctorReports")
+  consentsGiven      PatientConsent[]      @relation("ConsentGivenBy")
+  auditLogs          AuditLog[]            @relation("AuditActor")
+  evidenceRuns       ClinicalEvidenceRun[] @relation("EvidenceCreatedBy")
+  ownedIncidents     OpsIncident[]         @relation("IncidentOwner")
 
   @@map("users")
 }
 
 model Patient {
-  id              String    @id @default(uuid())
-  userId          String    @unique @map("user_id")
-  dateOfBirth     DateTime  @map("date_of_birth")
-  gender          Gender
-  medicalHistory  String?   @map("medical_history") @db.Text
-  allergies       String?   @db.Text
-  familyHistory   String?   @map("family_history") @db.Text
-  createdAt       DateTime  @default(now()) @map("created_at")
-  updatedAt       DateTime  @updatedAt @map("updated_at")
-  
-  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  images          Image[]
-  reports         Report[]
-  consents        PatientConsent[]
+  id             String   @id @default(uuid())
+  userId         String   @unique @map("user_id")
+  dateOfBirth    DateTime @map("date_of_birth")
+  gender         Gender
+  medicalHistory String?  @map("medical_history") @db.Text
+  allergies      String?  @db.Text
+  familyHistory  String?  @map("family_history") @db.Text
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  user     User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  images   Image[]
+  reports  Report[]
+  consents PatientConsent[]
 
   @@map("patients")
 }
 
 model Image {
-  id            String       @id @default(uuid())
-  patientId     String       @map("patient_id")
-  filePath      String       @map("file_path")
-  fileType      FileType     @map("file_type")
-  originalName  String       @map("original_name")
-  fileSize      Int          @map("file_size")
-  status        ImageStatus  @default(PENDING)
-  uploadedBy    String       @map("uploaded_by")
-  createdAt     DateTime     @default(now()) @map("created_at")
-  updatedAt     DateTime     @updatedAt @map("updated_at")
-  
-  patient       Patient      @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  uploader      User         @relation("UploadedBy", fields: [uploadedBy], references: [id])
-  detections    Detection[]
+  id           String      @id @default(uuid())
+  patientId    String      @map("patient_id")
+  filePath     String      @map("file_path")
+  fileType     FileType    @map("file_type")
+  originalName String      @map("original_name")
+  fileSize     Int         @map("file_size")
+  status       ImageStatus @default(PENDING)
+  uploadedBy   String      @map("uploaded_by")
+  createdAt    DateTime    @default(now()) @map("created_at")
+  updatedAt    DateTime    @updatedAt @map("updated_at")
+
+  patient    Patient     @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  uploader   User        @relation("UploadedBy", fields: [uploadedBy], references: [id])
+  detections Detection[]
 
   @@index([patientId])
   @@index([uploadedBy])
@@ -111,21 +148,21 @@ model Image {
 }
 
 model Detection {
-  id                String           @id @default(uuid())
-  imageId           String           @map("image_id")
-  modelVersion      String           @map("model_version")
-  cancerProbability Float            @map("cancer_probability")
+  id                String          @id @default(uuid())
+  imageId           String          @map("image_id")
+  modelVersion      String          @map("model_version")
+  cancerProbability Float           @map("cancer_probability")
   findings          Json
-  heatmapPath       String?          @map("heatmap_path")
-  status            DetectionStatus  @default(PENDING)
-  reviewedBy        String?          @map("reviewed_by")
-  reviewNotes       String?          @map("review_notes") @db.Text
-  createdAt         DateTime         @default(now()) @map("created_at")
-  updatedAt         DateTime         @updatedAt @map("updated_at")
-  
-  image             Image            @relation(fields: [imageId], references: [id], onDelete: Cascade)
-  reviewer          User?            @relation("ReviewedBy", fields: [reviewedBy], references: [id])
-  reports           Report[]
+  heatmapPath       String?         @map("heatmap_path")
+  status            DetectionStatus @default(PENDING)
+  reviewedBy        String?         @map("reviewed_by")
+  reviewNotes       String?         @map("review_notes") @db.Text
+  createdAt         DateTime        @default(now()) @map("created_at")
+  updatedAt         DateTime        @updatedAt @map("updated_at")
+
+  image    Image    @relation(fields: [imageId], references: [id], onDelete: Cascade)
+  reviewer User?    @relation("ReviewedBy", fields: [reviewedBy], references: [id])
+  reports  Report[]
 
   @@index([imageId])
   @@index([reviewedBy])
@@ -133,19 +170,19 @@ model Detection {
 }
 
 model Report {
-  id            String       @id @default(uuid())
-  detectionId   String       @map("detection_id")
-  patientId     String       @map("patient_id")
-  doctorId      String       @map("doctor_id")
-  content       Json
-  pdfPath       String?      @map("pdf_path")
-  status        ReportStatus @default(DRAFT)
-  createdAt     DateTime     @default(now()) @map("created_at")
-  updatedAt     DateTime     @updatedAt @map("updated_at")
-  
-  detection     Detection    @relation(fields: [detectionId], references: [id], onDelete: Cascade)
-  patient       Patient      @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  doctor        User         @relation("DoctorReports", fields: [doctorId], references: [id])
+  id          String       @id @default(uuid())
+  detectionId String       @map("detection_id")
+  patientId   String       @map("patient_id")
+  doctorId    String       @map("doctor_id")
+  content     Json
+  pdfPath     String?      @map("pdf_path")
+  status      ReportStatus @default(DRAFT)
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+
+  detection Detection @relation(fields: [detectionId], references: [id], onDelete: Cascade)
+  patient   Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  doctor    User      @relation("DoctorReports", fields: [doctorId], references: [id])
 
   @@index([detectionId])
   @@index([patientId])
@@ -166,8 +203,8 @@ model PatientConsent {
   createdAt        DateTime    @default(now()) @map("created_at")
   updatedAt        DateTime    @updatedAt @map("updated_at")
 
-  patient          Patient     @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  acceptedBy       User        @relation("ConsentGivenBy", fields: [acceptedByUserId], references: [id], onDelete: Cascade)
+  patient    Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  acceptedBy User    @relation("ConsentGivenBy", fields: [acceptedByUserId], references: [id], onDelete: Cascade)
 
   @@unique([patientId, consentType, consentVersion])
   @@index([patientId, consentType, acceptedAt(sort: Desc)])
@@ -176,20 +213,79 @@ model PatientConsent {
 }
 
 model AuditLog {
-  id          String    @id @default(uuid())
-  actorUserId String?   @map("actor_user_id")
-  actorRole   String?   @map("actor_role")
+  id          String   @id @default(uuid())
+  actorUserId String?  @map("actor_user_id")
+  actorRole   String?  @map("actor_role")
   action      String
-  entityType  String    @map("entity_type")
-  entityId    String    @map("entity_id")
+  entityType  String   @map("entity_type")
+  entityId    String   @map("entity_id")
   result      String
   metadata    Json?
-  createdAt   DateTime  @default(now()) @map("created_at")
+  createdAt   DateTime @default(now()) @map("created_at")
 
-  actorUser   User?     @relation("AuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  actorUser User? @relation("AuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
 
   @@index([actorUserId, createdAt(sort: Desc)])
   @@index([entityType, entityId, createdAt(sort: Desc)])
   @@index([action, createdAt(sort: Desc)])
   @@map("audit_logs")
+}
+
+model ClinicalEvidenceRun {
+  id                       String           @id @default(uuid())
+  runName                  String           @map("run_name")
+  modelVersion             String           @map("model_version")
+  datasetName              String           @map("dataset_name")
+  datasetVersion           String?          @map("dataset_version")
+  sampleCount              Int              @map("sample_count")
+  positiveCount            Int              @map("positive_count")
+  siteCount                Int              @map("site_count")
+  auroc                    Float
+  sensitivity              Float
+  specificity              Float
+  ppv                      Float?           @map("ppv")
+  npv                      Float?           @map("npv")
+  ece                      Float?           @map("ece")
+  brier                    Float?           @map("brier")
+  calibrationTemperature   Float?           @map("calibration_temperature")
+  thresholdHighSensitivity Float?           @map("threshold_high_sensitivity")
+  thresholdHighSpecificity Float?           @map("threshold_high_specificity")
+  regulatoryStatus         RegulatoryStatus @default(NOT_SUBMITTED) @map("regulatory_status")
+  stageRecommendation      DeploymentStage  @default(RESEARCH_ONLY) @map("stage_recommendation")
+  qaApprovedBy             String?          @map("qa_approved_by")
+  medicalApprovedBy        String?          @map("medical_approved_by")
+  reportPath               String?          @map("report_path")
+  notes                    String?          @db.Text
+  createdByUserId          String?          @map("created_by_user_id")
+  createdAt                DateTime         @default(now()) @map("created_at")
+  updatedAt                DateTime         @updatedAt @map("updated_at")
+
+  createdBy User? @relation("EvidenceCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt(sort: Desc)])
+  @@index([modelVersion, createdAt(sort: Desc)])
+  @@index([stageRecommendation, createdAt(sort: Desc)])
+  @@map("clinical_evidence_runs")
+}
+
+model OpsIncident {
+  id             String              @id @default(uuid())
+  source         OpsIncidentSource
+  severity       OpsIncidentSeverity
+  status         OpsIncidentStatus   @default(OPEN)
+  title          String
+  detail         String?             @db.Text
+  ownerUserId    String?             @map("owner_user_id")
+  openedAt       DateTime            @default(now()) @map("opened_at")
+  acknowledgedAt DateTime?           @map("acknowledged_at")
+  resolvedAt     DateTime?           @map("resolved_at")
+  createdAt      DateTime            @default(now()) @map("created_at")
+  updatedAt      DateTime            @updatedAt @map("updated_at")
+
+  owner User? @relation("IncidentOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+
+  @@index([status, severity, openedAt(sort: Desc)])
+  @@index([source, openedAt(sort: Desc)])
+  @@index([ownerUserId])
+  @@map("ops_incidents")
 }

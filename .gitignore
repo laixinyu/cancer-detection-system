@@ -23,6 +23,10 @@
 # misc
 .DS_Store
 *.pem
+.venv/
+.venv_export/
+ai-service/.venv/
+ai-service/.venv_export/
 
 # debug
 npm-debug.log*
