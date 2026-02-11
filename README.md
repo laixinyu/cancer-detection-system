@@ -33,65 +33,73 @@ flowchart TB
   U2[Doctor]
   U3[Admin]
 
-  subgraph FE[Frontend Layer Next.js App Router]
-    P1[Upload and Patient Pages]
-    P2[Doctor Review Queue]
-    P3[Reports Center]
-    P4[Admin Dashboard]
-    P5[Auth Pages]
+  subgraph OL[Online Screening and Review Path]
+    subgraph FE[Frontend Next.js App Router]
+      P1[Patient Upload and History]
+      P2[Doctor Queue and Review]
+      P3[Report and PDF Export]
+      P4[Admin Readiness and Governance]
+    end
+
+    subgraph BE[Backend Next.js API and tRPC]
+      A1[NextAuth RBAC]
+      A2[Upload API /api/images/upload]
+      A3[tRPC user image detection report ops]
+      A4[/api/health and /api/ready]
+    end
+
+    subgraph AI[AI Inference FastAPI and ONNX Runtime]
+      M0[/predict]
+      M1[Multitask Classifier Pneumonia Nodule Mass Opacity]
+      M2[Region Proposals and FP Reduction]
+      M3[Screening Summary and Triage]
+      M4[/health]
+    end
+
+    subgraph DS[Data and Storage]
+      D1[(PostgreSQL via Prisma)]
+      D2[(Redis)]
+      F1[public/uploads]
+      F2[ai-service/models]
+    end
   end
 
-  subgraph BE[Application Layer Next.js API + tRPC]
-    A1[NextAuth Authentication and Authorization]
-    A2[Upload API /api/images/upload]
-    A3[tRPC Routers user/image/detection/report/compliance/audit/analytics/ops]
-    A4[Health Probes /api/health /api/ready]
-  end
-
-  subgraph DB[Data Layer]
-    D1[(PostgreSQL + Prisma)]
-    D2[(Redis)]
-  end
-
-  subgraph AI[AI Inference Layer FastAPI + ONNXRuntime]
-    M1[Multitask Classifier Pneumonia Nodule Mass Opacity]
-    M2[Detector Head ONNX Lesion Localization]
-    M3[White-Lung and Infection Coverage Calculations]
-    M4[/health and /predict]
-  end
-
-  subgraph FS[Storage Layer]
-    F1[public/uploads image files]
-    F2[ai-service/models ONNX models and configs]
+  subgraph OFF[Offline Training and Model Release Path]
+    N1[NIH ChestXray14 Images and Metadata]
+    N2[prepare_nih_chestxray14.py]
+    N3[train_nih_multitask.py]
+    N4[export_trained_multitask_to_onnx.py]
+    N5[docker compose build ai-service]
   end
 
   U1 --> FE
   U2 --> FE
   U3 --> FE
-
   FE --> BE
+  A1 --> D1
   A2 --> F1
-  A2 --> M4
-  M4 --> M1
-  M4 --> M2
-  M4 --> M3
+  A2 --> M0
+  A3 --> D1
+  A3 --> D2
+  A4 --> D1
+  A4 --> M4
+  M0 --> M1
+  M0 --> M2
+  M0 --> M3
   M1 --> F2
   M2 --> F2
 
-  A3 --> D1
-  A3 --> D2
-  A1 --> D1
-  A4 --> D1
-  A4 --> M4
+  N1 --> N2 --> N3 --> N4 --> F2 --> N5 --> AI
 ```
 
 ### Architecture Summary
 
-- Frontend: Next.js pages provide patient upload, doctor review, report viewing, and admin operations.
-- Backend: Next.js API + tRPC handle business workflow; NextAuth enforces role-based access control.
-- AI service: FastAPI provides `/predict` and `/health`, including screening scores, infection coverage, and white-lung assessment.
-- Data: PostgreSQL stores core entities (users, images, detections, reports, audit, compliance, ops); Redis is available for cache/session scale.
-- Storage: Uploaded images are saved under `public/uploads`, while ONNX models and AI configs are managed in `ai-service/models`.
+- Online path: patient upload -> backend workflow -> AI inference -> doctor review -> report and PDF export.
+- Offline path: NIH dataset preparation -> multitask training -> ONNX export -> model release into `ai-service/models` -> AI service rebuild.
+- Frontend: Next.js pages cover patient, doctor, and admin roles.
+- Backend: Next.js API + tRPC manage workflow and governance; NextAuth enforces RBAC.
+- AI service: FastAPI exposes `/predict` and `/health`, with multitask scores, region proposals, and screening summary output.
+- Data/storage: PostgreSQL stores business and governance data; Redis supports cache/scale; image files in `public/uploads`.
 
 ## Quick Start
 

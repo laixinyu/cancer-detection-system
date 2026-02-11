@@ -33,36 +33,43 @@ flowchart TB
   U2[医生]
   U3[管理员]
 
-  subgraph FE[前端层 Next.js App Router]
-    P1[上传与患者页面]
-    P2[医生审阅队列]
-    P3[报告中心]
-    P4[管理后台]
-    P5[认证页面]
+  subgraph OL[在线筛查与审阅链路]
+    subgraph FE[前端层 Next.js App Router]
+      P1[患者上传与历史]
+      P2[医生队列与审阅]
+      P3[报告与 PDF 导出]
+      P4[管理后台就绪与治理]
+    end
+
+    subgraph BE[应用层 Next.js API 与 tRPC]
+      A1[NextAuth 认证与鉴权]
+      A2[上传接口 /api/images/upload]
+      A3[tRPC user image detection report ops]
+      A4[健康探针 /api/health 与 /api/ready]
+    end
+
+    subgraph AI[AI 推理层 FastAPI 与 ONNX Runtime]
+      M0[/predict]
+      M1[多任务分类 肺炎 结节 肿块 浸润]
+      M2[候选区域与误检抑制]
+      M3[筛查摘要与分诊优先级]
+      M4[/health]
+    end
+
+    subgraph DS[数据与存储层]
+      D1[(PostgreSQL + Prisma)]
+      D2[(Redis)]
+      F1[public/uploads 影像文件]
+      F2[ai-service/models 模型与配置]
+    end
   end
 
-  subgraph BE[应用层 Next.js API + tRPC]
-    A1[NextAuth 认证与鉴权]
-    A2[上传接口 /api/images/upload]
-    A3[tRPC 路由 user/image/detection/report/compliance/audit/analytics/ops]
-    A4[健康探针 /api/health /api/ready]
-  end
-
-  subgraph DB[数据层]
-    D1[(PostgreSQL + Prisma)]
-    D2[(Redis)]
-  end
-
-  subgraph AI[AI 推理层 FastAPI + ONNXRuntime]
-    M1[多任务分类 肺炎 结节 肿块 浸润]
-    M2[检测头 ONNX 病灶定位]
-    M3[白肺量化与感染覆盖计算]
-    M4[/health 与 /predict]
-  end
-
-  subgraph FS[存储层]
-    F1[public/uploads 影像文件]
-    F2[ai-service/models ONNX 模型与配置]
+  subgraph OFF[离线训练与发布链路]
+    N1[NIH ChestXray14 图像与元数据]
+    N2[prepare_nih_chestxray14.py]
+    N3[train_nih_multitask.py]
+    N4[export_trained_multitask_to_onnx.py]
+    N5[docker compose build ai-service]
   end
 
   U1 --> FE
@@ -70,20 +77,30 @@ flowchart TB
   U3 --> FE
 
   FE --> BE
+  A1 --> D1
   A2 --> F1
-  A2 --> M4
-  M4 --> M1
-  M4 --> M2
-  M4 --> M3
+  A2 --> M0
+  A3 --> D1
+  A3 --> D2
+  A4 --> D1
+  A4 --> M4
+  M0 --> M1
+  M0 --> M2
+  M0 --> M3
   M1 --> F2
   M2 --> F2
 
-  A3 --> D1
-  A3 --> D2
-  A1 --> D1
-  A4 --> D1
-  A4 --> M4
+  N1 --> N2 --> N3 --> N4 --> F2 --> N5 --> AI
 ```
+
+## 架构说明
+
+- 在线链路：患者上传 -> 后端编排 -> AI 推理 -> 医生审阅 -> 报告与 PDF 导出。
+- 离线链路：NIH 数据准备 -> 多任务训练 -> ONNX 导出 -> 发布到 `ai-service/models` -> 重建 AI 服务。
+- 前端：Next.js 覆盖患者、医生、管理员三类角色。
+- 后端：Next.js API + tRPC 负责业务流和治理能力；NextAuth 负责 RBAC。
+- AI 服务：FastAPI 暴露 `/predict` 与 `/health`，输出多任务分数、候选区域与筛查摘要。
+- 数据与存储：PostgreSQL 保存核心业务与治理数据，Redis 用于缓存/扩展，影像保存在 `public/uploads`。
 
 ## 快速开始
 
