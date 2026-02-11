@@ -2,6 +2,11 @@
 
 AI-assisted chest X-ray screening platform with role-based workflow for patient upload, doctor review, and report generation.
 
+## Documentation Languages
+
+- English: `README.md`
+- 简体中文: `README.zh-CN.md`
+
 ## Current Status
 
 - Frontend/Backend: Next.js + tRPC + Prisma + PostgreSQL
@@ -19,6 +24,74 @@ AI-assisted chest X-ray screening platform with role-based workflow for patient 
   - Output marked `RESEARCH_ONLY` (non-clinical use)
   - High-sensitivity and high-specificity decision thresholds supported
   - Clinical evidence ledger + governance gate + ops incident management added (admin)
+
+## System Architecture
+
+```mermaid
+flowchart TB
+  U1[Patient]
+  U2[Doctor]
+  U3[Admin]
+
+  subgraph FE[Frontend Layer Next.js App Router]
+    P1[Upload and Patient Pages]
+    P2[Doctor Review Queue]
+    P3[Reports Center]
+    P4[Admin Dashboard]
+    P5[Auth Pages]
+  end
+
+  subgraph BE[Application Layer Next.js API + tRPC]
+    A1[NextAuth Authentication and Authorization]
+    A2[Upload API /api/images/upload]
+    A3[tRPC Routers user/image/detection/report/compliance/audit/analytics/ops]
+    A4[Health Probes /api/health /api/ready]
+  end
+
+  subgraph DB[Data Layer]
+    D1[(PostgreSQL + Prisma)]
+    D2[(Redis)]
+  end
+
+  subgraph AI[AI Inference Layer FastAPI + ONNXRuntime]
+    M1[Multitask Classifier Pneumonia Nodule Mass Opacity]
+    M2[Detector Head ONNX Lesion Localization]
+    M3[White-Lung and Infection Coverage Calculations]
+    M4[/health and /predict]
+  end
+
+  subgraph FS[Storage Layer]
+    F1[public/uploads image files]
+    F2[ai-service/models ONNX models and configs]
+  end
+
+  U1 --> FE
+  U2 --> FE
+  U3 --> FE
+
+  FE --> BE
+  A2 --> F1
+  A2 --> M4
+  M4 --> M1
+  M4 --> M2
+  M4 --> M3
+  M1 --> F2
+  M2 --> F2
+
+  A3 --> D1
+  A3 --> D2
+  A1 --> D1
+  A4 --> D1
+  A4 --> M4
+```
+
+### Architecture Summary
+
+- Frontend: Next.js pages provide patient upload, doctor review, report viewing, and admin operations.
+- Backend: Next.js API + tRPC handle business workflow; NextAuth enforces role-based access control.
+- AI service: FastAPI provides `/predict` and `/health`, including screening scores, infection coverage, and white-lung assessment.
+- Data: PostgreSQL stores core entities (users, images, detections, reports, audit, compliance, ops); Redis is available for cache/session scale.
+- Storage: Uploaded images are saved under `public/uploads`, while ONNX models and AI configs are managed in `ai-service/models`.
 
 ## Quick Start
 

@@ -1,5 +1,10 @@
 # X-ray Cancer Detection System - Setup Instructions
 
+## Documentation Languages
+
+- English: `SETUP.md`
+- 简体中文: `SETUP.zh-CN.md`
+
 ## Prerequisites
 
 - Node.js 18+ installed
