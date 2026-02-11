@@ -167,6 +167,8 @@ export async function POST(request: Request) {
             triage,
             regions: aiResult.regions,
             labelScores: aiResult.labelScores ?? {},
+            infectionCoverage: aiResult.infectionCoverage ?? {},
+            whiteLungAssessment: aiResult.whiteLungAssessment ?? null,
             topFindings: aiResult.topFindings ?? [],
             decisionHighSensitivity: aiResult.decisionHighSensitivity ?? false,
             decisionHighSpecificity: aiResult.decisionHighSpecificity ?? false,

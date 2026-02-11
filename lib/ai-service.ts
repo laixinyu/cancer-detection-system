@@ -12,6 +12,16 @@ export interface AiDetectionResponse {
   cancerProbability: number
   regions: AiRegion[]
   labelScores?: Record<string, number>
+  infectionCoverage?: Record<string, number>
+  whiteLungAssessment?: {
+    lungOpacityRatio: number
+    whiteLungScore: number
+    severity: string
+    bilateralInvolvement: boolean
+    leftLungOpacityRatio?: number
+    rightLungOpacityRatio?: number
+    opacityThreshold?: number
+  }
   topFindings?: string[]
   calibrationTemperature?: number
   decisionHighSensitivity?: boolean
@@ -97,6 +107,8 @@ export async function requestAiDetection(file: File): Promise<AiDetectionRespons
     cancerProbability: Math.max(0, Math.min(1, payload.cancerProbability)),
     regions: payload.regions,
     labelScores: payload.labelScores,
+    infectionCoverage: payload.infectionCoverage,
+    whiteLungAssessment: payload.whiteLungAssessment,
     topFindings: payload.topFindings,
     calibrationTemperature: payload.calibrationTemperature,
     decisionHighSensitivity: payload.decisionHighSensitivity,

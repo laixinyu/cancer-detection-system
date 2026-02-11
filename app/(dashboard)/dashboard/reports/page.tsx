@@ -16,8 +16,10 @@ type ReportContent = {
   screeningSummary?: {
     pneumoniaScore?: number
     lesionScore?: number
+    whiteLungScore?: number
     overallScore?: number
     triagePriority?: string
+    infectionCoverage?: Record<string, number>
   }
 }
 
@@ -174,7 +176,7 @@ export default function ReportsPage() {
                 <div ref={reportRef} className="bg-white p-8 space-y-6">
                   <div className="text-center border-b pb-6">
                     <h1 className="text-2xl font-bold text-blue-600">{isZh ? '医学影像报告' : 'MEDICAL IMAGING REPORT'}</h1>
-                    <p className="text-sm text-gray-600 mt-2">{isZh ? '癌症检测系统' : 'Cancer Detection System'}</p>
+                    <p className="text-sm text-gray-600 mt-2">{isZh ? '肺部检测系统' : 'Lung Detection System'}</p>
                   </div>
 
                   <div>
@@ -232,11 +234,33 @@ export default function ReportsPage() {
                             </span>
                           </p>
                           <p>
+                            <span className="text-gray-600">{isZh ? '白肺评分：' : 'White Lung Score:'}</span>{' '}
+                            <span className="font-medium">
+                              {((reportContent.screeningSummary.whiteLungScore ?? 0) * 100).toFixed(1)}%
+                            </span>
+                          </p>
+                          <p>
                             <span className="text-gray-600">{isZh ? '分诊优先级：' : 'Triage Priority:'}</span>{' '}
                             <span className="font-medium">
                               {reportContent.screeningSummary.triagePriority ?? 'N/A'}
                             </span>
                           </p>
+                          {reportContent.screeningSummary.infectionCoverage && (
+                            <div>
+                              <span className="text-gray-600">{isZh ? '感染覆盖：' : 'Infection Coverage:'}</span>
+                              <div className="mt-1 space-y-1">
+                                {Object.entries(reportContent.screeningSummary.infectionCoverage)
+                                  .sort((a, b) => b[1] - a[1])
+                                  .slice(0, 3)
+                                  .map(([label, score]) => (
+                                    <div key={label} className="text-xs flex items-center justify-between">
+                                      <span>{label}</span>
+                                      <span className="font-medium">{(score * 100).toFixed(1)}%</span>
+                                    </div>
+                                  ))}
+                              </div>
+                            </div>
+                          )}
                         </>
                       )}
                     </div>

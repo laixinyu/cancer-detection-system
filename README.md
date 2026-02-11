@@ -1,4 +1,4 @@
-# X-ray Cancer Detection System
+# X-ray Lung Detection System
 
 AI-assisted chest X-ray screening platform with role-based workflow for patient upload, doctor review, and report generation.
 
@@ -9,8 +9,9 @@ AI-assisted chest X-ray screening platform with role-based workflow for patient 
 - AI tasks:
   - A: Pneumonia risk
   - B: Nodule/Mass lesion risk
+  - C: Infection coverage spectrum + white-lung quantification (screening-level)
 - Core screening workflow:
-  - Unified `screeningSummary` generated on upload (pneumonia + lesion + triage priority)
+  - Unified `screeningSummary` generated on upload (pneumonia + lesion + white-lung + triage priority)
   - Doctor queue prioritization uses screening triage when available
   - Review and report pages display structured screening metrics
 - Compliance posture:

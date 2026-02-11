@@ -138,9 +138,11 @@ function extractStringField(findings: unknown, field: string, fallback = ''): st
 function extractScreeningSummary(findings: unknown): {
   pneumoniaScore?: number
   lesionScore?: number
+  whiteLungScore?: number
   overallScore?: number
   triagePriority?: string
   suspectedConditions?: string[]
+  infectionCoverage?: Record<string, number>
   recommendations?: string[]
 } | null {
   if (!findings || typeof findings !== 'object') return null
@@ -150,11 +152,16 @@ function extractScreeningSummary(findings: unknown): {
   return {
     pneumoniaScore: typeof s.pneumoniaScore === 'number' ? s.pneumoniaScore : undefined,
     lesionScore: typeof s.lesionScore === 'number' ? s.lesionScore : undefined,
+    whiteLungScore: typeof s.whiteLungScore === 'number' ? s.whiteLungScore : undefined,
     overallScore: typeof s.overallScore === 'number' ? s.overallScore : undefined,
     triagePriority: typeof s.triagePriority === 'string' ? s.triagePriority : undefined,
     suspectedConditions: Array.isArray(s.suspectedConditions)
       ? s.suspectedConditions.filter((v): v is string => typeof v === 'string')
       : undefined,
+    infectionCoverage:
+      s.infectionCoverage && typeof s.infectionCoverage === 'object'
+        ? (s.infectionCoverage as Record<string, number>)
+        : undefined,
     recommendations: Array.isArray(s.recommendations)
       ? s.recommendations.filter((v): v is string => typeof v === 'string')
       : undefined,
@@ -450,6 +457,10 @@ export default function ReviewPage() {
                   <div className="font-semibold">{((screeningSummary.lesionScore ?? 0) * 100).toFixed(1)}%</div>
                 </div>
                 <div>
+                  <div className="text-gray-600">{isZh ? '白肺评分' : 'White Lung Score'}</div>
+                  <div className="font-semibold">{((screeningSummary.whiteLungScore ?? 0) * 100).toFixed(1)}%</div>
+                </div>
+                <div>
                   <div className="text-gray-600">{isZh ? '综合风险' : 'Overall Risk'}</div>
                   <div className="font-semibold">{((screeningSummary.overallScore ?? 0) * 100).toFixed(1)}%</div>
                 </div>
@@ -458,6 +469,21 @@ export default function ReviewPage() {
                   <div className="font-semibold">{screeningSummary.triagePriority ?? 'N/A'}</div>
                 </div>
               </div>
+              {screeningSummary.infectionCoverage && (
+                <div className="mt-4">
+                  <div className="text-xs text-gray-600 mb-2">{isZh ? '感染覆盖风险谱' : 'Infection Coverage Spectrum'}</div>
+                  <div className="grid md:grid-cols-2 gap-2">
+                    {Object.entries(screeningSummary.infectionCoverage)
+                      .sort((a, b) => b[1] - a[1])
+                      .map(([label, score]) => (
+                        <div key={label} className="rounded border px-2 py-1 text-xs flex items-center justify-between">
+                          <span>{label}</span>
+                          <span className="font-semibold">{(score * 100).toFixed(1)}%</span>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </CardContent>

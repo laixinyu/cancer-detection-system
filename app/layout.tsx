@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "X-ray Cancer Detection System",
-  description: "AI-powered cancer detection from X-ray images",
+  title: "X-ray Lung Detection System",
+  description: "AI-powered lung condition screening from chest X-ray images",
 };
 
 export default function RootLayout({

@@ -26,6 +26,7 @@ export default function DoctorQueuePage() {
       triagePriority?: 'CRITICAL' | 'HIGH' | 'ROUTINE'
       pneumoniaScore?: number
       lesionScore?: number
+      whiteLungScore?: number
       suspectedConditions?: string[]
     }
   }
@@ -120,6 +121,7 @@ export default function DoctorQueuePage() {
             const summary = getScreeningSummary(detection.findings)
             const pneumoniaScore = typeof summary?.pneumoniaScore === 'number' ? summary.pneumoniaScore : 0
             const lesionScore = typeof summary?.lesionScore === 'number' ? summary.lesionScore : detection.cancerProbability
+            const whiteLungScore = typeof summary?.whiteLungScore === 'number' ? summary.whiteLungScore : 0
             const conditions = Array.isArray(summary?.suspectedConditions) ? summary.suspectedConditions : []
             
             return (
@@ -176,7 +178,8 @@ export default function DoctorQueuePage() {
                           <div>
                             {isZh ? '肺炎风险：' : 'Pneumonia Risk: '}
                             {(pneumoniaScore * 100).toFixed(1)}% • {isZh ? '病灶风险：' : 'Lesion Risk: '}
-                            {(lesionScore * 100).toFixed(1)}%
+                            {(lesionScore * 100).toFixed(1)}% • {isZh ? '白肺评分：' : 'White Lung: '}
+                            {(whiteLungScore * 100).toFixed(1)}%
                           </div>
                           {conditions.length > 0 && (
                             <div>

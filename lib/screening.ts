@@ -22,9 +22,11 @@ function pickScore(labelScores: Record<string, number> | undefined, keys: string
 export type ScreeningSummary = {
   pneumoniaScore: number
   lesionScore: number
+  whiteLungScore: number
   overallScore: number
   triagePriority: 'CRITICAL' | 'HIGH' | 'ROUTINE'
   suspectedConditions: string[]
+  infectionCoverage: Record<string, number>
   recommendations: string[]
   taskDecisions: Record<string, TaskDecision>
 }
@@ -36,7 +38,9 @@ export function buildScreeningSummary(ai: AiDetectionResponse): ScreeningSummary
   const massScore = pickScore(labelScores, ['肿块(Mass)', 'Mass'])
   const opacityScore = pickScore(labelScores, ['浸润/实变(Opacity)', 'Lung Opacity', 'Opacity'])
   const lesionScore = clamp01(Math.max(ai.cancerProbability, noduleScore, massScore, opacityScore))
-  const overallScore = clamp01(Math.max(pneumoniaScore, lesionScore))
+  const whiteLungScore = clamp01(ai.whiteLungAssessment?.whiteLungScore ?? 0)
+  const overallScore = clamp01(Math.max(pneumoniaScore, lesionScore, whiteLungScore))
+  const infectionCoverage = ai.infectionCoverage ?? {}
 
   const pneumoniaDecision = ai.taskDecisions?.pneumonia ?? {
     highSensitivity: false,
@@ -50,17 +54,21 @@ export function buildScreeningSummary(ai: AiDetectionResponse): ScreeningSummary
   const suspectedConditions: string[] = []
   if (pneumoniaScore >= 0.3 || pneumoniaDecision.highSensitivity) suspectedConditions.push('PNEUMONIA_RISK')
   if (lesionScore >= 0.3 || lesionDecision.highSensitivity) suspectedConditions.push('LUNG_CANCER_RELATED_LESION_RISK')
+  if (whiteLungScore >= 0.35) suspectedConditions.push('WHITE_LUNG_PATTERN_RISK')
+  if ((infectionCoverage.covidLikeWhiteLungPattern ?? 0) >= 0.35) suspectedConditions.push('COVID_LIKE_INFECTION_RISK')
 
   let triagePriority: ScreeningSummary['triagePriority'] = 'ROUTINE'
   if (
     lesionDecision.highSpecificity ||
     pneumoniaDecision.highSpecificity ||
+    whiteLungScore >= 0.65 ||
     overallScore >= 0.85
   ) {
     triagePriority = 'CRITICAL'
   } else if (
     lesionDecision.highSensitivity ||
     pneumoniaDecision.highSensitivity ||
+    whiteLungScore >= 0.45 ||
     overallScore >= 0.6
   ) {
     triagePriority = 'HIGH'
@@ -70,6 +78,7 @@ export function buildScreeningSummary(ai: AiDetectionResponse): ScreeningSummary
   if (triagePriority === 'CRITICAL') {
     recommendations.push('PRIORITIZE_RADIOLOGIST_REVIEW')
     recommendations.push('CONSIDER_URGENT_CT_OR_ADDITIONAL_WORKUP')
+    recommendations.push('EVALUATE_SEVERE_LUNG_INFECTION_OR_WHITE_LUNG_PATTERN')
   } else if (triagePriority === 'HIGH') {
     recommendations.push('SCHEDULE_PRIORITY_REVIEW')
     recommendations.push('CORRELATE_WITH_CLINICAL_SYMPTOMS_AND_LABS')
@@ -80,9 +89,11 @@ export function buildScreeningSummary(ai: AiDetectionResponse): ScreeningSummary
   return {
     pneumoniaScore: clamp01(pneumoniaScore),
     lesionScore: clamp01(lesionScore),
+    whiteLungScore,
     overallScore,
     triagePriority,
     suspectedConditions,
+    infectionCoverage,
     recommendations,
     taskDecisions: {
       pneumonia: pneumoniaDecision,
