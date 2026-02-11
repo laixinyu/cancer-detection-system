@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "backfill:regions224": "node scripts/backfill-legacy-224-regions.js"
+    "backfill:regions224": "node scripts/backfill-legacy-224-regions.js",
+    "repair:uploads": "node scripts/repair-missing-upload-files.js"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",

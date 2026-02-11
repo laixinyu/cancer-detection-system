@@ -19,19 +19,16 @@ export const imageRouter = createTRPCRouter({
         cursor: input.cursor ? { id: input.cursor } : undefined,
         orderBy: { createdAt: 'desc' },
         include: {
-          patient: {
-            select: {
-              user: {
-                select: {
-                  name: true,
-                  email: true,
-                },
-              },
-            },
-          },
           detections: {
             orderBy: { createdAt: 'desc' },
             take: 1,
+            select: {
+              id: true,
+              createdAt: true,
+              cancerProbability: true,
+              status: true,
+              modelVersion: true,
+            },
           },
         },
       })

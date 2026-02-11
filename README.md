@@ -295,6 +295,55 @@ python ai-service/scripts/check_detector_reproducibility.py --model .\ai-service
 
 The script exits with non-zero code if max score/box drift exceeds configured eps.
 
+### Train with NIH ChestXray14 (Google-hosted NIH dataset)
+
+Dataset source you provided:
+- `https://nihcc.app.box.com/v/ChestXray-NIHCC`
+
+Expected local layout (after download/extract):
+- `Data_Entry_2017.csv`
+- image files under one or more subfolders (script will recursively scan)
+
+Install training dependencies (outside Docker, local Python):
+
+```bash
+python -m pip install -r ai-service/requirements-train.txt
+```
+
+Optional: automated download + integrity check script
+
+```bash
+python ai-service/scripts/prepare_nih_chestxray14.py --dataset-root "E:\datasets\ChestXray-NIHCC" --download --extract --verify --report "E:\datasets\ChestXray-NIHCC\nih_integrity_report.json"
+```
+
+Notes:
+- Download supports resume and stores archives in `dataset-root/downloads`.
+- Extraction writes images into `dataset-root/images`.
+- Verification checks archive readability and CSV/image coverage.
+
+Train a multitask model aligned with current inference outputs:
+- output order: `["Pneumonia", "Nodule", "Mass", "Lung Opacity"]`
+
+```bash
+python ai-service/scripts/train_nih_multitask.py --dataset-root "E:\datasets\ChestXray-NIHCC" --epochs 8 --batch-size 32 --output-dir "ai-service/models"
+```
+
+Export trained checkpoint to ONNX used by AI service:
+
+```bash
+python ai-service/scripts/export_trained_multitask_to_onnx.py --checkpoint "ai-service/models/nih_multitask_best.pt" --output "../models/cxr_multitask.onnx" --input-size 224
+```
+
+Restart AI service to load new model:
+
+```bash
+docker compose up -d --build ai-service
+```
+
+Verify:
+- `GET http://localhost:8000/health` shows `modelVersion` and `modelLoaded=true`
+- `POST /predict` returns `labelScores` with 4-task logits mapped by service.
+
 ### Startup gate (auto fail-fast)
 
 The AI service now performs detector compatibility self-check at startup.

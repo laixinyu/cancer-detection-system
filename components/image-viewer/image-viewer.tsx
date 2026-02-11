@@ -86,6 +86,7 @@ export default function ImageViewer({
   const [brightness, setBrightness] = useState(100)
   const [contrast, setContrast] = useState(100)
   const [imageSize, setImageSize] = useState({ width: 0, height: 0 })
+  const [imageLoadError, setImageLoadError] = useState(false)
   
   const containerRef = useRef<HTMLDivElement>(null)
   const initializedRef = useRef(false)
@@ -101,6 +102,8 @@ export default function ImageViewer({
 
   useEffect(() => {
     initializedRef.current = false
+    setImageLoadError(false)
+    setImageSize({ width: 0, height: 0 })
   }, [imageUrl])
 
   const initializeView = useCallback((width: number, height: number) => {
@@ -307,9 +310,14 @@ export default function ImageViewer({
                       const width = target.naturalWidth
                       const height = target.naturalHeight
                       setImageSize({ width, height })
+                      setImageLoadError(false)
                       if (!initializedRef.current) {
                         initializeView(width, height)
                       }
+                    }}
+                    onError={() => {
+                      setImageLoadError(true)
+                      setImageSize({ width: 0, height: 0 })
                     }}
                   />
 
@@ -371,16 +379,26 @@ export default function ImageViewer({
                     const width = target.naturalWidth
                     const height = target.naturalHeight
                     setImageSize({ width, height })
+                    setImageLoadError(false)
                     if (!initializedRef.current) {
                       initializeView(width, height)
                     }
                   }}
+                  onError={() => {
+                    setImageLoadError(true)
+                    setImageSize({ width: 0, height: 0 })
+                  }}
                 />
               )}
 
-              {imageSize.width === 0 && (
+              {imageSize.width === 0 && !imageLoadError && (
                 <div className="absolute inset-0 flex items-center justify-center text-sm text-gray-300">
                   {t('viewer.loadingImage')}
+                </div>
+              )}
+              {imageLoadError && (
+                <div className="absolute inset-0 flex items-center justify-center text-sm text-red-300">
+                  {t('viewer.imageMissing')}
                 </div>
               )}
             </div>

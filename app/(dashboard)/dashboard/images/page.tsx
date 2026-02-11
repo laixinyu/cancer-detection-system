@@ -3,6 +3,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import Link from 'next/link'
+import { useSession } from 'next-auth/react'
 import { formatDate, formatFileSize } from '@/lib/utils'
 import { api } from '@/lib/trpc'
 import { useI18n } from '@/components/i18n-provider'
@@ -10,9 +11,16 @@ import { useI18n } from '@/components/i18n-provider'
 export default function ImagesPage() {
   const { locale } = useI18n()
   const isZh = locale === 'zh'
-  const { data, isLoading, error } = api.image.list.useQuery({
-    limit: 100,
-  })
+  const { status } = useSession()
+  const { data, isLoading, error } = api.image.list.useQuery(
+    {
+      limit: 100,
+    },
+    {
+      enabled: status === 'authenticated',
+      refetchOnWindowFocus: true,
+    }
+  )
 
   const images = data?.images ?? []
   const completed = images.filter((image) => image.status === 'COMPLETED').length
@@ -82,10 +90,15 @@ export default function ImagesPage() {
           <CardTitle>{isZh ? '已上传影像' : 'Uploaded Images'}</CardTitle>
         </CardHeader>
         <CardContent>
-          {isLoading && <div className="text-center py-8 text-gray-500">{isZh ? '正在加载影像...' : 'Loading images...'}</div>}
+          {(status === 'loading' || isLoading) && (
+            <div className="text-center py-8 text-gray-500">{isZh ? '正在加载影像...' : 'Loading images...'}</div>
+          )}
+          {status === 'unauthenticated' && (
+            <div className="text-center py-8 text-red-600">{isZh ? '登录已失效，请重新登录' : 'Session expired. Please sign in again.'}</div>
+          )}
           {error && <div className="text-center py-8 text-red-600">{error.message}</div>}
 
-          {!isLoading && !error && images.length === 0 && (
+          {status === 'authenticated' && !isLoading && !error && images.length === 0 && (
             <div className="text-center py-12">
               <div className="text-6xl mb-4">📁</div>
               <p className="text-gray-500 mb-4">{isZh ? '还没有上传影像' : 'No images uploaded yet'}</p>
@@ -95,7 +108,7 @@ export default function ImagesPage() {
             </div>
           )}
 
-          {!isLoading && !error && images.length > 0 && (
+          {status === 'authenticated' && !isLoading && !error && images.length > 0 && (
             <div className="space-y-4">
               {images.map((image) => {
                 const latestDetection = image.detections[0]

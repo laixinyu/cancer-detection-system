@@ -69,6 +69,9 @@ class ModelRunner:
         self.detector_input_height = self.detector_input_size
         self.detector_conf_threshold = float(os.getenv("AI_DETECTOR_CONF_THRESHOLD", "0.25"))
         self.detector_iou_threshold = float(os.getenv("AI_DETECTOR_IOU_THRESHOLD", "0.45"))
+        self.enable_tta = os.getenv("AI_ENABLE_TTA", "true").lower() == "true"
+        self.enable_fp_reduction = os.getenv("AI_ENABLE_FP_REDUCTION", "true").lower() == "true"
+        self.fp_min_lung_overlap = float(os.getenv("AI_FP_MIN_LUNG_OVERLAP", "0.20"))
         self.detector_profile_path = os.getenv(
             "AI_DETECTOR_PROFILE_PATH", "./models/detector_profile.json"
         )
@@ -536,14 +539,7 @@ class ModelRunner:
             LABEL_OPACITY: self._calibrated_sigmoid(self._safe_logit(opacity_like)),
         }
 
-    def infer_multitask_scores(self, image_norm: np.ndarray) -> Dict[str, float]:
-        if self.session is None or self.input_name is None:
-            return self._fallback_label_scores(image_norm)
-
-        input_tensor = image_norm[np.newaxis, np.newaxis, :, :].astype(np.float32)
-        outputs = self.session.run(None, {self.input_name: input_tensor})
-        output = np.array(outputs[0]).reshape(-1)
-
+    def _decode_multitask_output(self, output: np.ndarray, image_norm: np.ndarray) -> Dict[str, float]:
         if output.size >= 4:
             # Expected ordering: [Pneumonia, Nodule, Mass, Opacity] logits.
             return {
@@ -574,6 +570,27 @@ class ModelRunner:
             }
 
         return self._fallback_label_scores(image_norm)
+
+    def _forward_multitask_scores(self, image_norm: np.ndarray) -> Dict[str, float]:
+        if self.session is None or self.input_name is None:
+            return self._fallback_label_scores(image_norm)
+
+        input_tensor = image_norm[np.newaxis, np.newaxis, :, :].astype(np.float32)
+        outputs = self.session.run(None, {self.input_name: input_tensor})
+        output = np.array(outputs[0]).reshape(-1)
+        return self._decode_multitask_output(output, image_norm)
+
+    def infer_multitask_scores(self, image_norm: np.ndarray) -> Dict[str, float]:
+        if not self.enable_tta:
+            return self._forward_multitask_scores(image_norm)
+
+        # Two-view TTA for stability: original + horizontal flip.
+        base = self._forward_multitask_scores(image_norm)
+        flipped = self._forward_multitask_scores(np.fliplr(image_norm).copy())
+        return {
+            label: float(np.clip((base.get(label, 0.0) + flipped.get(label, 0.0)) * 0.5, 0.0, 1.0))
+            for label in TASK_LABELS
+        }
 
     @staticmethod
     def _calculate_iou(box_a: Region, box_b: Region) -> float:
@@ -623,6 +640,77 @@ class ModelRunner:
             kept.extend(self._nms(label_regions, iou_threshold=iou_threshold))
         kept.sort(key=lambda r: r.confidence, reverse=True)
         return kept
+
+    @staticmethod
+    def _region_lung_overlap(mask: np.ndarray, region: Region) -> float:
+        h, w = mask.shape
+        x1 = int(np.clip(region.x, 0, w - 1))
+        y1 = int(np.clip(region.y, 0, h - 1))
+        x2 = int(np.clip(region.x + region.width, x1 + 1, w))
+        y2 = int(np.clip(region.y + region.height, y1 + 1, h))
+        roi = mask[y1:y2, x1:x2]
+        if roi.size == 0:
+            return 0.0
+        return float(np.mean(roi > 0))
+
+    def _reduce_false_positives(
+        self,
+        regions: List[Region],
+        image_original: np.ndarray,
+        label_scores: Dict[str, float],
+    ) -> List[Region]:
+        if not self.enable_fp_reduction or not regions:
+            return regions
+
+        h, w = image_original.shape
+        lung_mask = self.estimate_lung_mask(image_original)
+        kept: List[Region] = []
+        fallback_candidates: List[Tuple[Region, float]] = []
+        for r in regions:
+            overlap = self._region_lung_overlap(lung_mask, r)
+            fallback_candidates.append((r, overlap))
+            label_prior = float(label_scores.get(r.label, label_scores.get(LABEL_OPACITY, 0.0)))
+            dynamic_min_conf = float(np.clip(max(0.25, label_prior * 0.45), 0.25, 0.65))
+
+            x1 = r.x
+            y1 = r.y
+            x2 = r.x + r.width
+            y2 = r.y + r.height
+            near_border = x1 <= 2 or y1 <= 2 or x2 >= (w - 2) or y2 >= (h - 2)
+
+            if overlap < self.fp_min_lung_overlap and r.confidence < 0.90:
+                continue
+            if r.confidence < dynamic_min_conf and overlap < 0.45:
+                continue
+            if near_border and r.confidence < 0.85:
+                continue
+
+            fused_conf = float(np.clip(0.7 * r.confidence + 0.3 * label_prior, 0.0, 1.0))
+            kept.append(
+                Region(
+                    x=r.x,
+                    y=r.y,
+                    width=r.width,
+                    height=r.height,
+                    confidence=fused_conf,
+                    label=r.label,
+                )
+            )
+
+        if not kept and fallback_candidates:
+            # Safety fallback: keep a tiny subset to avoid empty localization results.
+            fallback_candidates.sort(key=lambda t: t[0].confidence, reverse=True)
+            rescued: List[Region] = []
+            for r, overlap in fallback_candidates:
+                if overlap >= 0.05:
+                    rescued.append(r)
+                if len(rescued) >= 2:
+                    break
+            if not rescued:
+                rescued = [fallback_candidates[0][0]]
+            kept = rescued
+
+        return self._nms_by_label(kept, iou_threshold=self.detector_iou_threshold)
 
     @staticmethod
     def _label_from_class_id(class_id: int) -> str:
@@ -711,7 +799,7 @@ class ModelRunner:
         return self._nms_by_label(regions, iou_threshold=self.detector_iou_threshold)
 
     def detect_regions_with_detector(
-        self, image_original: np.ndarray
+        self, image_original: np.ndarray, label_scores: Optional[Dict[str, float]] = None
     ) -> Tuple[List[Region], Dict[str, float]]:
         if self.detector_session is None or self.detector_input_name is None:
             return [], {label: 0.0 for label in TASK_LABELS}
@@ -741,6 +829,7 @@ class ModelRunner:
         input_tensor = input_tensor.astype(np.float32)
         outputs = self.detector_session.run(None, {self.detector_input_name: input_tensor})
         decoded = self._decode_detector_output(outputs[0], orig_w=image_original.shape[1], orig_h=image_original.shape[0])
+        decoded = self._reduce_false_positives(decoded, image_original, label_scores or {})
         decoded = decoded[:10]
         scores = {label: 0.0 for label in TASK_LABELS}
         for r in decoded:
@@ -785,6 +874,7 @@ class ModelRunner:
             )
 
         nms_regions = self._nms(regions, iou_threshold=0.35)[:5]
+        nms_regions = self._reduce_false_positives(nms_regions, image_original, label_scores)[:5]
         region_scores = {label: 0.0 for label in TASK_LABELS}
         for region in nms_regions:
             region_scores[region.label] = max(region_scores[region.label], region.confidence)
@@ -828,6 +918,9 @@ def health():
         "detectorExpectedSha256": runner.detector_expected_sha256 or None,
         "detectorProfilePath": runner.detector_profile_path,
         "detectorDecoderFormat": runner.detector_profile.get("decoder_format", "auto"),
+        "enableTTA": runner.enable_tta,
+        "enableFPReduction": runner.enable_fp_reduction,
+        "fpMinLungOverlap": runner.fp_min_lung_overlap,
         "detectorStartupCheckPassed": runner.detector_check_passed,
         "detectorStartupCheckMessage": runner.detector_check_message,
         "tasks": ["A:Pneumonia", "B:Nodule/Mass", "C:InfectionCoverage+WhiteLung"],
@@ -867,7 +960,7 @@ async def predict(file: UploadFile = File(...)):
     try:
         image_norm, image_original = runner.preprocess_with_original(content)
         model_scores = runner.infer_multitask_scores(image_norm)
-        regions, region_scores = runner.detect_regions_with_detector(image_original)
+        regions, region_scores = runner.detect_regions_with_detector(image_original, model_scores)
         if not regions and runner.enable_heuristic_regions:
             regions, region_scores = runner.detect_regions(image_original, model_scores)
     except Exception as exc:

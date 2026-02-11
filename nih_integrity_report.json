@@ -1,0 +1,95 @@
+{
+  "dataset_root": "E:\\datasets\\ChestXray-NIHCC",
+  "downloads_dir": "E:\\datasets\\ChestXray-NIHCC\\downloads",
+  "metadata_dir": "E:\\datasets\\ChestXray-NIHCC\\metadata",
+  "images_dir": "E:\\datasets\\ChestXray-NIHCC\\images",
+  "archives": [
+    {
+      "name": "images_001.tar.gz",
+      "exists": true,
+      "size_bytes": 2008470987,
+      "tar_readable": true
+    },
+    {
+      "name": "images_002.tar.gz",
+      "exists": true,
+      "size_bytes": 3952623504,
+      "tar_readable": true
+    },
+    {
+      "name": "images_003.tar.gz",
+      "exists": true,
+      "size_bytes": 3929234850,
+      "tar_readable": true
+    },
+    {
+      "name": "images_004.tar.gz",
+      "exists": true,
+      "size_bytes": 3838903983,
+      "tar_readable": true
+    },
+    {
+      "name": "images_005.tar.gz",
+      "exists": true,
+      "size_bytes": 3935496531,
+      "tar_readable": true
+    },
+    {
+      "name": "images_006.tar.gz",
+      "exists": true,
+      "size_bytes": 3986301172,
+      "tar_readable": true
+    },
+    {
+      "name": "images_007.tar.gz",
+      "exists": true,
+      "size_bytes": 4016328426,
+      "tar_readable": true
+    },
+    {
+      "name": "images_008.tar.gz",
+      "exists": true,
+      "size_bytes": 4018347353,
+      "tar_readable": true
+    },
+    {
+      "name": "images_009.tar.gz",
+      "exists": true,
+      "size_bytes": 4111327929,
+      "tar_readable": true
+    },
+    {
+      "name": "images_010.tar.gz",
+      "exists": true,
+      "size_bytes": 4181556296,
+      "tar_readable": true
+    },
+    {
+      "name": "images_011.tar.gz",
+      "exists": true,
+      "size_bytes": 4187084020,
+      "tar_readable": true
+    },
+    {
+      "name": "images_012.tar.gz",
+      "exists": true,
+      "size_bytes": 2914187733,
+      "tar_readable": true
+    }
+  ],
+  "csv_found": true,
+  "csv_path": "E:\\datasets\\ChestXray-NIHCC\\metadata\\Data_Entry_2017_v2020.csv",
+  "csv_rows": 112120,
+  "expected_unique_images": 112120,
+  "actual_images": 112120,
+  "missing_images": 0,
+  "missing_examples": [],
+  "orphan_images": 0,
+  "orphan_examples": [],
+  "coverage_ratio": 1.0,
+  "csv_suspiciously_small": false,
+  "train_val_count": 86524,
+  "train_val_missing": 0,
+  "test_count": 25596,
+  "test_missing": 0
+}
