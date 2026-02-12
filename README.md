@@ -185,6 +185,28 @@ Report includes:
 - High-sensitivity operating point metrics
 - High-specificity operating point metrics
 
+### Fastest Path (Use One Command)
+
+If you just want the best-practice training pipeline without tuning dozens of flags, run:
+
+```bash
+npm run train:best
+```
+
+Default flow:
+- optional offline resize to 512
+- train with best-practice defaults
+
+Optional flags:
+
+```bash
+npm run train:best -- -ExportOnnx -RebuildAi
+npm run train:best -- -DatasetRoot "E:\datasets\ChestXray-NIHCC" -ResizedRoot "E:\datasets\ChestXray-NIHCC-512"
+npm run train:best -- -SkipResize -ResizedRoot "E:\datasets\ChestXray-NIHCC"
+```
+
+Below is the equivalent manual flow (reference only).
+
 ## Clinical Evidence And Ops Readiness
 
 ### Why this was added
@@ -329,52 +351,26 @@ Notes:
 - Extraction writes images into `dataset-root/images`.
 - Verification checks archive readability and CSV/image coverage.
 
-Train a multitask model aligned with current inference outputs:
-- output order: `["Pneumonia", "Nodule", "Mass", "Lung Opacity"]`
+Manual equivalent (same as `npm run train:best`):
+
+1. Optional resize
 
 ```bash
-python ai-service/scripts/train_nih_multitask.py --dataset-root "E:\datasets\ChestXray-NIHCC" --split-mode nih_official --epochs 8 --batch-size 32 --output-dir "ai-service/models"
+python ai-service/scripts/prepare_nih_resized_dataset.py --dataset-root "E:\datasets\ChestXray-NIHCC" --output-root "E:\datasets\ChestXray-NIHCC-512" --size 512 --quality 90 --workers 12 --skip-existing
 ```
 
-Backbone upgrade examples:
+2. Train
 
 ```bash
-# EfficientNetV2-S student
-python ai-service/scripts/train_nih_multitask.py --dataset-root "E:\datasets\ChestXray-NIHCC" --backbone efficientnet_v2_s --image-size 320 --epochs 8 --batch-size 24 --output-dir "ai-service/models"
-
-# ConvNeXt-Tiny student
-python ai-service/scripts/train_nih_multitask.py --dataset-root "E:\datasets\ChestXray-NIHCC" --backbone convnext_tiny --image-size 320 --epochs 8 --batch-size 24 --output-dir "ai-service/models"
+python ai-service/scripts/train_nih_multitask.py --dataset-root "E:\datasets\ChestXray-NIHCC-512" --split-mode nih_official --backbone efficientnet_v2_s --image-size 320 --epochs 8 --batch-size 64 --amp --num-workers 12 --prefetch-factor 4 --output-dir "ai-service/models"
 ```
 
-Teacher-student distillation example:
+3. Export + deploy
 
 ```bash
-python ai-service/scripts/train_nih_multitask.py --dataset-root "E:\datasets\ChestXray-NIHCC" --backbone efficientnet_v2_s --teacher-backbone convnext_tiny --teacher-checkpoint "ai-service/models/nih_multitask_convnext_tiny_best.pt" --distill-alpha 0.3 --distill-temp 2.0 --image-size 320 --epochs 8 --batch-size 24 --output-dir "ai-service/models"
-```
-
-Supported backbones:
-- `densenet121` (default)
-- `efficientnet_v2_s`
-- `convnext_tiny`
-- `vit_b_16`
-
-Export trained checkpoint to ONNX used by AI service:
-
-```bash
-python ai-service/scripts/export_trained_multitask_to_onnx.py --checkpoint "ai-service/models/nih_multitask_best.pt" --output "../models/cxr_multitask.onnx" --input-size 224
-```
-
-If backbone is not `densenet121`, checkpoint name includes backbone suffix, e.g. `nih_multitask_convnext_tiny_best.pt`.
-
-Restart AI service to load new model:
-
-```bash
+python ai-service/scripts/export_trained_multitask_to_onnx.py --checkpoint "ai-service/models/nih_multitask_efficientnet_v2_s_best.pt" --output "../models/cxr_multitask.onnx" --input-size 320
 docker compose up -d --build ai-service
 ```
-
-Verify:
-- `GET http://localhost:8000/health` shows `modelVersion` and `modelLoaded=true`
-- `POST /predict` returns `labelScores` with 4-task logits mapped by service.
 
 ### Startup gate (auto fail-fast)
 
