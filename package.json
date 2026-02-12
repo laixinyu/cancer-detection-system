@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "backfill:regions224": "node scripts/backfill-legacy-224-regions.js",
-    "repair:uploads": "node scripts/repair-missing-upload-files.js"
+    "repair:uploads": "node scripts/repair-missing-upload-files.js",
+    "train:best": "powershell -ExecutionPolicy Bypass -File ai-service/scripts/train_best.ps1"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",

@@ -333,14 +333,38 @@ Train a multitask model aligned with current inference outputs:
 - output order: `["Pneumonia", "Nodule", "Mass", "Lung Opacity"]`
 
 ```bash
-python ai-service/scripts/train_nih_multitask.py --dataset-root "E:\datasets\ChestXray-NIHCC" --epochs 8 --batch-size 32 --output-dir "ai-service/models"
+python ai-service/scripts/train_nih_multitask.py --dataset-root "E:\datasets\ChestXray-NIHCC" --split-mode nih_official --epochs 8 --batch-size 32 --output-dir "ai-service/models"
 ```
+
+Backbone upgrade examples:
+
+```bash
+# EfficientNetV2-S student
+python ai-service/scripts/train_nih_multitask.py --dataset-root "E:\datasets\ChestXray-NIHCC" --backbone efficientnet_v2_s --image-size 320 --epochs 8 --batch-size 24 --output-dir "ai-service/models"
+
+# ConvNeXt-Tiny student
+python ai-service/scripts/train_nih_multitask.py --dataset-root "E:\datasets\ChestXray-NIHCC" --backbone convnext_tiny --image-size 320 --epochs 8 --batch-size 24 --output-dir "ai-service/models"
+```
+
+Teacher-student distillation example:
+
+```bash
+python ai-service/scripts/train_nih_multitask.py --dataset-root "E:\datasets\ChestXray-NIHCC" --backbone efficientnet_v2_s --teacher-backbone convnext_tiny --teacher-checkpoint "ai-service/models/nih_multitask_convnext_tiny_best.pt" --distill-alpha 0.3 --distill-temp 2.0 --image-size 320 --epochs 8 --batch-size 24 --output-dir "ai-service/models"
+```
+
+Supported backbones:
+- `densenet121` (default)
+- `efficientnet_v2_s`
+- `convnext_tiny`
+- `vit_b_16`
 
 Export trained checkpoint to ONNX used by AI service:
 
 ```bash
 python ai-service/scripts/export_trained_multitask_to_onnx.py --checkpoint "ai-service/models/nih_multitask_best.pt" --output "../models/cxr_multitask.onnx" --input-size 224
 ```
+
+If backbone is not `densenet121`, checkpoint name includes backbone suffix, e.g. `nih_multitask_convnext_tiny_best.pt`.
 
 Restart AI service to load new model:
 

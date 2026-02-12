@@ -72,6 +72,12 @@ class ModelRunner:
         self.enable_tta = os.getenv("AI_ENABLE_TTA", "true").lower() == "true"
         self.enable_fp_reduction = os.getenv("AI_ENABLE_FP_REDUCTION", "true").lower() == "true"
         self.fp_min_lung_overlap = float(os.getenv("AI_FP_MIN_LUNG_OVERLAP", "0.20"))
+        self.prefer_cuda_ep = os.getenv("AI_ORT_PREFER_CUDA", "true").lower() == "true"
+        self.enable_io_binding = os.getenv("AI_ORT_ENABLE_IO_BINDING", "true").lower() == "true"
+        self.ort_cuda_device_id = int(os.getenv("AI_ORT_CUDA_DEVICE_ID", "0"))
+        self.ort_intra_threads = int(os.getenv("AI_ORT_INTRA_OP_THREADS", "1"))
+        self.ort_inter_threads = int(os.getenv("AI_ORT_INTER_OP_THREADS", "1"))
+        self.ort_graph_optimization = os.getenv("AI_ORT_GRAPH_OPT_LEVEL", "all").strip().lower()
         self.detector_profile_path = os.getenv(
             "AI_DETECTOR_PROFILE_PATH", "./models/detector_profile.json"
         )
@@ -125,8 +131,67 @@ class ModelRunner:
         self.session: Optional[ort.InferenceSession] = None
         self.input_name: Optional[str] = None
         self.output_names: List[str] = []
+        self.ort_available_providers: List[str] = ort.get_available_providers()
+        self.model_active_providers: List[str] = []
+        self.detector_active_providers: List[str] = []
         self.model_error: Optional[str] = None
         self._try_load_model()
+
+    def _build_session_options(self) -> ort.SessionOptions:
+        so = ort.SessionOptions()
+        so.enable_mem_pattern = False
+        so.enable_cpu_mem_arena = True
+        so.intra_op_num_threads = self.ort_intra_threads
+        so.inter_op_num_threads = self.ort_inter_threads
+        level = self.ort_graph_optimization
+        if level == "disable":
+            so.graph_optimization_level = ort.GraphOptimizationLevel.ORT_DISABLE_ALL
+        elif level == "basic":
+            so.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_BASIC
+        elif level == "extended":
+            so.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_EXTENDED
+        else:
+            so.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+        return so
+
+    def _build_execution_providers(self) -> List[object]:
+        providers: List[object] = []
+        if self.prefer_cuda_ep and "CUDAExecutionProvider" in self.ort_available_providers:
+            providers.append(
+                (
+                    "CUDAExecutionProvider",
+                    {
+                        "device_id": self.ort_cuda_device_id,
+                        "cudnn_conv_algo_search": "HEURISTIC",
+                        "do_copy_in_default_stream": True,
+                    },
+                )
+            )
+        providers.append("CPUExecutionProvider")
+        return providers
+
+    @staticmethod
+    def _session_has_cuda_provider(session: Optional[ort.InferenceSession]) -> bool:
+        if session is None:
+            return False
+        return "CUDAExecutionProvider" in session.get_providers()
+
+    def _session_run(
+        self,
+        session: ort.InferenceSession,
+        input_name: str,
+        output_names: List[str],
+        input_tensor: np.ndarray,
+    ) -> List[np.ndarray]:
+        # Fast path: use IOBinding when CUDA EP is active to reduce host/device copy overhead.
+        if self.enable_io_binding and self._session_has_cuda_provider(session):
+            io_binding = session.io_binding()
+            io_binding.bind_cpu_input(input_name, input_tensor)
+            for out_name in output_names:
+                io_binding.bind_output(out_name, "cuda", self.ort_cuda_device_id)
+            session.run_with_iobinding(io_binding)
+            return [np.array(x) for x in io_binding.copy_outputs_to_cpu()]
+        return [np.array(x) for x in session.run(None, {input_name: input_tensor})]
 
     @staticmethod
     def _file_sha256(path: str) -> str:
@@ -255,9 +320,15 @@ class ModelRunner:
             return
 
         try:
-            self.session = ort.InferenceSession(resolved_path, providers=["CPUExecutionProvider"])
+            so = self._build_session_options()
+            self.session = ort.InferenceSession(
+                resolved_path,
+                sess_options=so,
+                providers=self._build_execution_providers(),
+            )
             self.input_name = self.session.get_inputs()[0].name
             self.output_names = [output.name for output in self.session.get_outputs()]
+            self.model_active_providers = list(self.session.get_providers())
             self.model_path = resolved_path
             self.model_error = None
         except Exception as exc:
@@ -265,6 +336,7 @@ class ModelRunner:
             self.session = None
             self.input_name = None
             self.output_names = []
+            self.model_active_providers = []
 
         self._try_load_detector()
 
@@ -278,17 +350,16 @@ class ModelRunner:
             self.detector_check_message = "detector model not found"
             return
         try:
-            so = ort.SessionOptions()
-            so.enable_mem_pattern = False
-            so.enable_cpu_mem_arena = True
-            so.intra_op_num_threads = 1
-            so.inter_op_num_threads = 1
+            so = self._build_session_options()
             self.detector_session = ort.InferenceSession(
-                resolved, sess_options=so, providers=["CPUExecutionProvider"]
+                resolved,
+                sess_options=so,
+                providers=self._build_execution_providers(),
             )
             self.detector_input_name = self.detector_session.get_inputs()[0].name
             self._sync_detector_input_shape()
             self.detector_output_names = [o.name for o in self.detector_session.get_outputs()]
+            self.detector_active_providers = list(self.detector_session.get_providers())
             self.detector_model_path = resolved
             self.detector_sha256 = self._file_sha256(resolved)
             if self.detector_expected_sha256 and self.detector_sha256 != self.detector_expected_sha256:
@@ -306,6 +377,7 @@ class ModelRunner:
             self.detector_output_names = []
             self.detector_check_passed = False
             self.detector_check_message = f"detector init or check failed: {exc}"
+            self.detector_active_providers = []
 
     def _sync_detector_input_shape(self) -> None:
         if self.detector_session is None:
@@ -576,8 +648,13 @@ class ModelRunner:
             return self._fallback_label_scores(image_norm)
 
         input_tensor = image_norm[np.newaxis, np.newaxis, :, :].astype(np.float32)
-        outputs = self.session.run(None, {self.input_name: input_tensor})
-        output = np.array(outputs[0]).reshape(-1)
+        outputs = self._session_run(
+            session=self.session,
+            input_name=self.input_name,
+            output_names=self.output_names,
+            input_tensor=input_tensor,
+        )
+        output = outputs[0].reshape(-1)
         return self._decode_multitask_output(output, image_norm)
 
     def infer_multitask_scores(self, image_norm: np.ndarray) -> Dict[str, float]:
@@ -827,7 +904,12 @@ class ModelRunner:
             input_tensor = chw[np.newaxis, np.newaxis, :, :]
 
         input_tensor = input_tensor.astype(np.float32)
-        outputs = self.detector_session.run(None, {self.detector_input_name: input_tensor})
+        outputs = self._session_run(
+            session=self.detector_session,
+            input_name=self.detector_input_name,
+            output_names=self.detector_output_names,
+            input_tensor=input_tensor,
+        )
         decoded = self._decode_detector_output(outputs[0], orig_w=image_original.shape[1], orig_h=image_original.shape[0])
         decoded = self._reduce_false_positives(decoded, image_original, label_scores or {})
         decoded = decoded[:10]
@@ -926,6 +1008,13 @@ def health():
         "tasks": ["A:Pneumonia", "B:Nodule/Mass", "C:InfectionCoverage+WhiteLung"],
         "availableModels": available_models,
         "modelError": runner.model_error,
+        "ortAvailableProviders": runner.ort_available_providers,
+        "modelActiveProviders": runner.model_active_providers,
+        "detectorActiveProviders": runner.detector_active_providers,
+        "ortPreferCuda": runner.prefer_cuda_ep,
+        "ortEnableIOBinding": runner.enable_io_binding,
+        "ortCudaDeviceId": runner.ort_cuda_device_id,
+        "ortGraphOptimization": runner.ort_graph_optimization,
     }
 
 
