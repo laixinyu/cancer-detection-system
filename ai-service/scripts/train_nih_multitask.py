@@ -32,6 +32,7 @@ BACKBONE_CHOICES = [
     "vit_b_16",
 ]
 SPLIT_MODE_CHOICES = ["hash_patient", "nih_official"]
+LR_SCHEDULER_CHOICES = ["cosine", "plateau", "none"]
 OPACITY_PROXY_LABELS = {
     "Infiltration",
     "Consolidation",
@@ -405,6 +406,14 @@ def validate_args(args: argparse.Namespace) -> None:
         raise ValueError("--num-workers must be >= -1")
     if args.prefetch_factor < 1:
         raise ValueError("--prefetch-factor must be >= 1")
+    if args.lr_scheduler not in LR_SCHEDULER_CHOICES:
+        raise ValueError(f"Unsupported --lr-scheduler: {args.lr_scheduler}")
+    if args.lr_patience < 1:
+        raise ValueError("--lr-patience must be >= 1")
+    if args.lr_factor <= 0.0 or args.lr_factor >= 1.0:
+        raise ValueError("--lr-factor must be in (0,1)")
+    if args.lr_min < 0.0:
+        raise ValueError("--lr-min must be >= 0")
     parse_class_loss_weights(args.class_loss_weights)
 
 
@@ -473,7 +482,8 @@ def build_teacher_info(args: argparse.Namespace) -> Dict[str, object]:
 def training_banner(args: argparse.Namespace, train_size: int, val_size: int) -> None:
     print(
         f"[info] backbone={args.backbone}, image_size={args.image_size}, "
-        f"train={train_size}, val={val_size}, batch_size={args.batch_size}"
+        f"train={train_size}, val={val_size}, batch_size={args.batch_size}, "
+        f"lr_scheduler={args.lr_scheduler}"
     )
 
 
@@ -500,12 +510,14 @@ def resolve_num_workers(requested: int) -> int:
     if requested >= 0:
         return requested
     cpu_count = os.cpu_count() or 8
-    return max(2, min(12, cpu_count - 2))
+    # Auto-tune for loader throughput while keeping CPU headroom for the OS.
+    return max(4, min(16, int(cpu_count * 0.7)))
 
 
 def print_cuda_diagnostics() -> None:
     available = torch.cuda.is_available()
     print(f"[env] torch.cuda.is_available={available}")
+    print(f"[env] torch_version={torch.__version__}, cuda_version={torch.version.cuda}")
     if not available:
         return
     device_idx = torch.cuda.current_device()
@@ -513,6 +525,17 @@ def print_cuda_diagnostics() -> None:
     print(f"[env] cuda.current_device={device_idx}")
     print(f"[env] cuda.device_name={device_name}")
     print(f"[env] cudnn.enabled={torch.backends.cudnn.enabled}")
+
+
+def configure_torch_backend(device: torch.device) -> None:
+    # Enable faster tensor-core math on modern NVIDIA GPUs.
+    try:
+        torch.set_float32_matmul_precision("high")
+    except Exception:
+        pass
+    if device.type == "cuda":
+        torch.backends.cuda.matmul.allow_tf32 = True
+        torch.backends.cudnn.allow_tf32 = True
 
 
 def json_print(payload: Dict[str, object]) -> None:
@@ -750,6 +773,22 @@ def checkpoint_payload(model: nn.Module, args: argparse.Namespace, metrics: Dict
     return payload
 
 
+def build_lr_scheduler(
+    optimizer: torch.optim.Optimizer, args: argparse.Namespace
+) -> Optional[object]:
+    if args.lr_scheduler == "none":
+        return None
+    if args.lr_scheduler == "cosine":
+        return torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=max(args.epochs, 1), eta_min=args.lr_min)
+    return torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer,
+        mode="min",
+        factor=args.lr_factor,
+        patience=args.lr_patience,
+        min_lr=args.lr_min,
+    )
+
+
 def ensure_min_samples(samples: Sequence[Sample]) -> None:
     if not samples:
         raise RuntimeError("No training samples found. Check dataset_root and CSV path.")
@@ -784,10 +823,11 @@ def train_loop(
     else:
         criterion = BCEWithLogitsWeightedLoss(pos_weight=pos_weight, class_weights=class_weights)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=max(args.epochs, 1))
+    scheduler = build_lr_scheduler(optimizer, args)
     scaler = GradScaler(enabled=(args.amp and device.type == "cuda"))
 
     best_auc = -1.0
+    best_auc_for_patience = -1.0
     best_epoch = 0
     best_val_loss = float("inf")
     no_improve_epochs = 0
@@ -805,8 +845,8 @@ def train_loop(
 
         pbar = tqdm(train_loader, desc=f"Epoch {epoch}/{args.epochs}", ncols=100)
         for x, y in pbar:
-            x = x.to(device)
-            y = y.to(device)
+            x = x.to(device, non_blocking=True)
+            y = y.to(device, non_blocking=True)
             optimizer.zero_grad(set_to_none=True)
             with autocast(enabled=(args.amp and device.type == "cuda")):
                 student_logits = model(x)
@@ -840,7 +880,6 @@ def train_loop(
                 )
             )
 
-        scheduler.step()
         metrics = evaluate(model, val_loader, device, prefix="val")
         metrics["epoch"] = float(epoch)
         metrics["train_loss"] = running_total / max(seen, 1)
@@ -850,6 +889,13 @@ def train_loop(
         metrics["samples_per_sec"] = float(seen / epoch_seconds)
         if should_use_distillation(teacher_model, args.distill_alpha):
             metrics["train_kd_loss"] = running_kd / max(seen, 1)
+        val_auc = float(metrics["val_mean_auc"])
+        val_loss = float(metrics["val_loss"])
+        if isinstance(scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
+            scheduler.step(val_loss)
+        elif scheduler is not None:
+            scheduler.step()
+        metrics["lr"] = float(optimizer.param_groups[0]["lr"])
         history.append(metrics)
         json_print(metrics)
 
@@ -857,8 +903,7 @@ def train_loop(
         torch.save(ckpt, last_path)
         if args.save_epoch_checkpoints:
             torch.save(ckpt, epoch_dir / f"epoch_{epoch}.pt")
-        val_auc = float(metrics["val_mean_auc"])
-        val_loss = float(metrics["val_loss"])
+
         if val_loss < best_val_loss:
             best_val_loss = val_loss
         if prev_val_loss is not None and val_loss > prev_val_loss:
@@ -867,10 +912,13 @@ def train_loop(
             val_loss_rise_streak = 0
         prev_val_loss = val_loss
 
-        if val_auc > (best_auc + args.early_stop_min_delta):
-            best_auc = metrics["val_mean_auc"]
+        if val_auc > best_auc:
+            best_auc = val_auc
             best_epoch = epoch
             torch.save(ckpt, best_path)
+
+        if val_auc > (best_auc_for_patience + args.early_stop_min_delta):
+            best_auc_for_patience = val_auc
             no_improve_epochs = 0
         else:
             no_improve_epochs += 1
@@ -907,8 +955,8 @@ def evaluate(model: nn.Module, loader: DataLoader, device: torch.device, prefix:
     criterion = nn.BCEWithLogitsLoss()
     with torch.no_grad():
         for x, y in loader:
-            x = x.to(device)
-            y = y.to(device)
+            x = x.to(device, non_blocking=True)
+            y = y.to(device, non_blocking=True)
             logits = model(x)
             loss = criterion(logits, y)
             loss_sum += float(loss.item()) * x.shape[0]
@@ -955,6 +1003,7 @@ def train(args: argparse.Namespace) -> None:
         train_samples, val_samples = split_samples_with_fallback(samples, args)
 
     device = choose_device(args.cpu)
+    configure_torch_backend(device)
     pin_memory = device.type == "cuda"
     num_workers = resolve_num_workers(args.num_workers)
     if device.type == "cuda" and args.cudnn_benchmark:
@@ -1079,9 +1128,13 @@ def build_argparser() -> argparse.ArgumentParser:
     p.add_argument("--batch-size", type=int, default=32)
     p.add_argument("--epochs", type=int, default=8)
     p.add_argument("--lr", type=float, default=1e-4)
+    p.add_argument("--lr-scheduler", choices=LR_SCHEDULER_CHOICES, default="plateau")
+    p.add_argument("--lr-patience", type=int, default=1, help="ReduceLROnPlateau patience (epochs)")
+    p.add_argument("--lr-factor", type=float, default=0.5, help="ReduceLROnPlateau factor")
+    p.add_argument("--lr-min", type=float, default=1e-6, help="Minimum LR for schedulers")
     p.add_argument("--weight-decay", type=float, default=1e-4)
     p.add_argument("--val-ratio", type=float, default=0.15)
-    p.add_argument("--num-workers", type=int, default=-1, help="-1 means auto-tune (up to 12)")
+    p.add_argument("--num-workers", type=int, default=-1, help="-1 means auto-tune (up to 16)")
     p.add_argument("--prefetch-factor", type=int, default=4)
     p.add_argument(
         "--cudnn-benchmark",

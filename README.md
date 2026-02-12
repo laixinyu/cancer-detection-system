@@ -29,47 +29,47 @@ AI-assisted chest X-ray screening platform with role-based workflow for patient 
 
 ```mermaid
 flowchart TB
-  U1[Patient]
-  U2[Doctor]
-  U3[Admin]
+  U1["Patient"]
+  U2["Doctor"]
+  U3["Admin"]
 
-  subgraph OL[Online Screening and Review Path]
-    subgraph FE[Frontend Next.js App Router]
-      P1[Patient Upload and History]
-      P2[Doctor Queue and Review]
-      P3[Report and PDF Export]
-      P4[Admin Readiness and Governance]
+  subgraph OL["Online Screening and Review Path"]
+    subgraph FE["Frontend Next.js App Router"]
+      P1["Patient Upload and History"]
+      P2["Doctor Queue and Review"]
+      P3["Report and PDF Export"]
+      P4["Admin Readiness and Governance"]
     end
 
-    subgraph BE[Backend Next.js API and tRPC]
-      A1[NextAuth RBAC]
-      A2[Upload API /api/images/upload]
-      A3[tRPC user image detection report ops]
-      A4[/api/health and /api/ready]
+    subgraph BE["Backend Next.js API and tRPC"]
+      A1["NextAuth RBAC"]
+      A2["Upload API /api/images/upload"]
+      A3["tRPC user image detection report ops"]
+      A4["/api/health and /api/ready"]
     end
 
-    subgraph AI[AI Inference FastAPI and ONNX Runtime]
-      M0[/predict]
-      M1[Multitask Classifier Pneumonia Nodule Mass Opacity]
-      M2[Region Proposals and FP Reduction]
-      M3[Screening Summary and Triage]
-      M4[/health]
+    subgraph AI["AI Inference FastAPI and ONNX Runtime"]
+      M0["/predict"]
+      M1["Multitask Classifier Pneumonia Nodule Mass Opacity"]
+      M2["Region Proposals and FP Reduction"]
+      M3["Screening Summary and Triage"]
+      M4["/health"]
     end
 
-    subgraph DS[Data and Storage]
-      D1[(PostgreSQL via Prisma)]
-      D2[(Redis)]
-      F1[public/uploads]
-      F2[ai-service/models]
+    subgraph DS["Data and Storage"]
+      D1["PostgreSQL via Prisma"]
+      D2["Redis"]
+      F1["public/uploads"]
+      F2["ai-service/models"]
     end
   end
 
-  subgraph OFF[Offline Training and Model Release Path]
-    N1[NIH ChestXray14 Images and Metadata]
-    N2[prepare_nih_chestxray14.py]
-    N3[train_nih_multitask.py]
-    N4[export_trained_multitask_to_onnx.py]
-    N5[docker compose build ai-service]
+  subgraph OFF["Offline Training and Model Release Path"]
+    N1["NIH ChestXray14 Images and Metadata"]
+    N2["prepare_nih_chestxray14.py"]
+    N3["train_nih_multitask.py"]
+    N4["export_trained_multitask_to_onnx.py"]
+    N5["docker compose build ai-service"]
   end
 
   U1 --> FE
@@ -129,6 +129,24 @@ npm run dev
 ```
 
 App URL: `http://localhost:3000`
+
+## Minimum Hardware Baseline (Current Version)
+
+Baseline for current code and `npm run train:best`:
+
+- Training (full NIH dataset + offline resize + multitask training):
+  - GPU: NVIDIA CUDA GPU with `>= 12GB` VRAM (RTX 4070-class recommended)
+  - CPU: `>= 8` cores (`12~16` threads recommended)
+  - RAM: `>= 32GB`
+  - Storage: NVMe SSD with `>= 600GB` free (HDD strongly discouraged)
+- Inference deployment (ONNX Runtime + FastAPI):
+  - CPU-only: `>= 4` cores, `>= 8GB` RAM
+  - GPU inference: NVIDIA CUDA GPU with `>= 6GB` VRAM (`>= 8GB` recommended)
+  - Storage: `>= 20GB` free
+
+Notes:
+- If GPU utilization is low while CPU is saturated, move dataset to NVMe SSD first, then increase `--num-workers` (current recommendation: `16`).
+- If VRAM is insufficient, reduce `--batch-size` from `64` to `48` or `32`.
 
 ## AI Model Workflow
 
@@ -196,6 +214,7 @@ npm run train:best
 Default flow:
 - optional offline resize to 512
 - train with best-practice defaults
+- CUDA preflight first (prints `torch/cuda` info); if CUDA is unavailable in current Python env, script fails fast.
 
 Optional flags:
 
@@ -356,13 +375,14 @@ Manual equivalent (same as `npm run train:best`):
 1. Optional resize
 
 ```bash
-python ai-service/scripts/prepare_nih_resized_dataset.py --dataset-root "E:\datasets\ChestXray-NIHCC" --output-root "E:\datasets\ChestXray-NIHCC-512" --size 512 --quality 90 --workers 12 --skip-existing
+python ai-service/scripts/prepare_nih_resized_dataset.py --dataset-root "E:\datasets\ChestXray-NIHCC" --output-root "E:\datasets\ChestXray-NIHCC-512" --size 512 --quality 90 --workers 16 --skip-existing
 ```
 
 2. Train
 
 ```bash
-python ai-service/scripts/train_nih_multitask.py --dataset-root "E:\datasets\ChestXray-NIHCC-512" --split-mode nih_official --backbone efficientnet_v2_s --image-size 320 --epochs 8 --batch-size 64 --amp --num-workers 12 --prefetch-factor 4 --output-dir "ai-service/models"
+python -c "import torch; print(torch.__version__, torch.version.cuda, torch.cuda.is_available(), torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU')"
+python ai-service/scripts/train_nih_multitask.py --dataset-root "E:\datasets\ChestXray-NIHCC-512" --split-mode nih_official --backbone efficientnet_v2_s --image-size 320 --epochs 8 --batch-size 64 --amp --num-workers 16 --prefetch-factor 4 --output-dir "ai-service/models"
 ```
 
 3. Export + deploy

@@ -29,68 +29,23 @@
 
 ```mermaid
 flowchart TB
-  U1[患者]
-  U2[医生]
-  U3[管理员]
+  U1[患者] --> FE[前端层 Next.js App Router]
+  U2[医生] --> FE
+  U3[管理员] --> FE
 
-  subgraph OL[在线筛查与审阅链路]
-    subgraph FE[前端层 Next.js App Router]
-      P1[患者上传与历史]
-      P2[医生队列与审阅]
-      P3[报告与 PDF 导出]
-      P4[管理后台就绪与治理]
-    end
+  FE --> BE[应用层 Next.js API 与 tRPC]
+  BE --> AI[AI 推理层 FastAPI 与 ONNX Runtime]
+  BE --> DB[PostgreSQL + Prisma]
+  BE --> REDIS[Redis]
+  BE --> UPLOADS[public/uploads 影像文件]
+  AI --> MODELS[ai-service/models 模型与配置]
 
-    subgraph BE[应用层 Next.js API 与 tRPC]
-      A1[NextAuth 认证与鉴权]
-      A2[上传接口 /api/images/upload]
-      A3[tRPC user image detection report ops]
-      A4[健康探针 /api/health 与 /api/ready]
-    end
-
-    subgraph AI[AI 推理层 FastAPI 与 ONNX Runtime]
-      M0[/predict]
-      M1[多任务分类 肺炎 结节 肿块 浸润]
-      M2[候选区域与误检抑制]
-      M3[筛查摘要与分诊优先级]
-      M4[/health]
-    end
-
-    subgraph DS[数据与存储层]
-      D1[(PostgreSQL + Prisma)]
-      D2[(Redis)]
-      F1[public/uploads 影像文件]
-      F2[ai-service/models 模型与配置]
-    end
-  end
-
-  subgraph OFF[离线训练与发布链路]
-    N1[NIH ChestXray14 图像与元数据]
-    N2[prepare_nih_chestxray14.py]
-    N3[train_nih_multitask.py]
-    N4[export_trained_multitask_to_onnx.py]
-    N5[docker compose build ai-service]
-  end
-
-  U1 --> FE
-  U2 --> FE
-  U3 --> FE
-
-  FE --> BE
-  A1 --> D1
-  A2 --> F1
-  A2 --> M0
-  A3 --> D1
-  A3 --> D2
-  A4 --> D1
-  A4 --> M4
-  M0 --> M1
-  M0 --> M2
-  M0 --> M3
-  M1 --> F2
-  M2 --> F2
-
-  N1 --> N2 --> N3 --> N4 --> F2 --> N5 --> AI
+  NIH[NIH ChestXray14 图像与元数据] --> PREP[prepare_nih_chestxray14.py]
+  PREP --> TRAIN[train_nih_multitask.py]
+  TRAIN --> EXPORT[export_trained_multitask_to_onnx.py]
+  EXPORT --> MODELS
+  MODELS --> BUILD[docker compose build ai-service]
+  BUILD --> AI
 ```
 
 ## 架构说明
@@ -130,6 +85,24 @@ npm run dev
 ```
 
 访问地址：`http://localhost:3000`
+
+## 最低硬件标准（当前版本）
+
+以下是按当前代码与 `npm run train:best` 给出的最低可运行基线：
+
+- 训练（NIH 全量 + 离线缩放 + 多任务训练）：
+  - GPU：NVIDIA CUDA 显卡，显存 `>= 12GB`（建议 RTX 4070 或同级）
+  - CPU：`>= 8` 核（建议 `12~16` 线程以上）
+  - 内存：`>= 32GB`
+  - 磁盘：NVMe SSD，可用空间 `>= 600GB`（强烈不建议 HDD）
+- 推理部署（ONNX Runtime + FastAPI）：
+  - CPU 部署：`>= 4` 核，内存 `>= 8GB`
+  - GPU 部署：NVIDIA CUDA 显卡，显存 `>= 6GB`（建议 `>= 8GB`）
+  - 磁盘：可用空间 `>= 20GB`
+
+说明：
+- 如果训练时 GPU 利用率低、CPU 满载，优先检查数据是否在 NVMe SSD，并提高 `--num-workers`（当前推荐 `16`）。
+- 若显存不足，可把 `--batch-size` 从 `64` 下调到 `48` 或 `32`。
 
 ## AI 模型流程
 
@@ -213,6 +186,7 @@ npm run train:best
 
 默认会执行：离线缩放(512) -> 训练(最佳实践参数)。
 训练时会保存每轮权重到 `ai-service/models/epochs/epoch_*.pt`，方便直接拿 `epoch_3.pt` 做推理对比。
+脚本会先做 CUDA 预检（打印 `torch/cuda` 信息），若当前 Python 不是 GPU 版 PyTorch，会直接失败并停止后续步骤。
 
 可选参数示例（导出 ONNX 并重建 AI 服务）：
 
@@ -237,13 +211,14 @@ npm run train:best -- -SkipResize -ResizedRoot "E:\datasets\ChestXray-NIHCC"
 1. 可选：先把 1024 原图离线缩放（建议，能明显提速）
 
 ```bash
-python ai-service/scripts/prepare_nih_resized_dataset.py --dataset-root "E:\datasets\ChestXray-NIHCC" --output-root "E:\datasets\ChestXray-NIHCC-512" --size 512 --quality 90 --workers 12 --skip-existing
+python ai-service/scripts/prepare_nih_resized_dataset.py --dataset-root "E:\datasets\ChestXray-NIHCC" --output-root "E:\datasets\ChestXray-NIHCC-512" --size 512 --quality 90 --workers 16 --skip-existing
 ```
 
 2. 训练（新手推荐这一条）
 
 ```bash
-python ai-service/scripts/train_nih_multitask.py --dataset-root "E:\datasets\ChestXray-NIHCC-512" --split-mode nih_official --backbone efficientnet_v2_s --image-size 320 --epochs 8 --batch-size 64 --amp --num-workers 12 --prefetch-factor 4 --output-dir "ai-service/models"
+python -c "import torch; print(torch.__version__, torch.version.cuda, torch.cuda.is_available(), torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU')"
+python ai-service/scripts/train_nih_multitask.py --dataset-root "E:\datasets\ChestXray-NIHCC-512" --split-mode nih_official --backbone efficientnet_v2_s --image-size 320 --epochs 8 --batch-size 64 --amp --num-workers 16 --prefetch-factor 4 --output-dir "ai-service/models"
 ```
 
 提速建议（默认 `batch_size=32`，这里已提升到 `64`）：
@@ -251,7 +226,7 @@ python ai-service/scripts/train_nih_multitask.py --dataset-root "E:\datasets\Che
 - 如果出现显存不足（OOM），回退到 `48` 或 `32`。
 - 训练时用 `nvidia-smi -l 1` 观察 `GPU-Util`。
 - 若 CPU 接近满载但 GPU 利用率不高，说明数据加载可能是瓶颈，可优先：
-  - 提高 `--num-workers`（如 `8~12`）
+  - 提高 `--num-workers`（如 `12~16`）
   - 保持 `--prefetch-factor 4`
   - 使用离线缩放后的数据集（如 `ChestXray-NIHCC-512`）
 

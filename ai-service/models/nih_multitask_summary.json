@@ -1,0 +1,91 @@
+{
+  "dataset_root": "E:\\datasets\\ChestXray-NIHCC",
+  "csv_path": "E:\\datasets\\ChestXray-NIHCC\\metadata\\Data_Entry_2017_v2020.csv",
+  "train_size": 95106,
+  "val_size": 17014,
+  "best_mean_auc": 0.7585157298635001,
+  "best_checkpoint": "E:\\newTestProject\\cancer-detection-system\\ai-service\\models\\nih_multitask_best.pt",
+  "last_checkpoint": "E:\\newTestProject\\cancer-detection-system\\ai-service\\models\\nih_multitask_last.pt",
+  "history": [
+    {
+      "val_loss": 0.6078393388764199,
+      "auc_Pneumonia": 0.6562168013876796,
+      "auc_Nodule": 0.7428603016443652,
+      "auc_Mass": 0.824437576558769,
+      "auc_Lung Opacity": 0.7514423995380675,
+      "mean_auc": 0.7437392697822203,
+      "epoch": 1.0,
+      "train_loss": 1.075959399510184
+    },
+    {
+      "val_loss": 0.5742580652853514,
+      "auc_Pneumonia": 0.686999641451526,
+      "auc_Nodule": 0.7587560470840513,
+      "auc_Mass": 0.8321584134693693,
+      "auc_Lung Opacity": 0.7561488174490536,
+      "mean_auc": 0.7585157298635001,
+      "epoch": 2.0,
+      "train_loss": 0.9951840011769634
+    },
+    {
+      "val_loss": 0.5068324863476269,
+      "auc_Pneumonia": 0.680886874495575,
+      "auc_Nodule": 0.768225314945947,
+      "auc_Mass": 0.8260160226535141,
+      "auc_Lung Opacity": 0.7516773186296359,
+      "mean_auc": 0.756701382681168,
+      "epoch": 3.0,
+      "train_loss": 0.933384635919848
+    },
+    {
+      "val_loss": 0.5209360825471765,
+      "auc_Pneumonia": 0.6680763112975994,
+      "auc_Nodule": 0.7759997597628817,
+      "auc_Mass": 0.819600936377014,
+      "auc_Lung Opacity": 0.7589969284062059,
+      "mean_auc": 0.7556684839609252,
+      "epoch": 4.0,
+      "train_loss": 0.8328365294664533
+    },
+    {
+      "val_loss": 0.4454953677543283,
+      "auc_Pneumonia": 0.6620298550439742,
+      "auc_Nodule": 0.7669836634046353,
+      "auc_Mass": 0.8244381720401859,
+      "auc_Lung Opacity": 0.7613301546173955,
+      "mean_auc": 0.7536954612765476,
+      "epoch": 5.0,
+      "train_loss": 0.6667804661487612
+    },
+    {
+      "val_loss": 0.39472368661897983,
+      "auc_Pneumonia": 0.6707583646313389,
+      "auc_Nodule": 0.7479481036652791,
+      "auc_Mass": 0.8073850904763957,
+      "auc_Lung Opacity": 0.7634915146444311,
+      "mean_auc": 0.7473957683543613,
+      "epoch": 6.0,
+      "train_loss": 0.5065138091866136
+    },
+    {
+      "val_loss": 0.34181287545245304,
+      "auc_Pneumonia": 0.6363143154977385,
+      "auc_Nodule": 0.7472353710374089,
+      "auc_Mass": 0.8022636700640633,
+      "auc_Lung Opacity": 0.762062596838789,
+      "mean_auc": 0.7369689883594999,
+      "epoch": 7.0,
+      "train_loss": 0.3842704928896719
+    },
+    {
+      "val_loss": 0.3474008962117898,
+      "auc_Pneumonia": 0.6262900477187873,
+      "auc_Nodule": 0.7430739430054942,
+      "auc_Mass": 0.7951323247279263,
+      "auc_Lung Opacity": 0.7622647268834342,
+      "mean_auc": 0.7316902605839106,
+      "epoch": 8.0,
+      "train_loss": 0.3187805653079673
+    }
+  ]
+}

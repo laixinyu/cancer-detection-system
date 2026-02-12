@@ -7,7 +7,7 @@ param(
   [int]$ImageSize = 320,
   [int]$Epochs = 8,
   [int]$BatchSize = 64,
-  [int]$NumWorkers = 12,
+  [int]$NumWorkers = 16,
   [int]$PrefetchFactor = 4,
   [string]$OutputDir = "ai-service/models",
   [switch]$ExportOnnx,
@@ -16,8 +16,17 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+function Assert-LastExitCode([string]$StepName) {
+  if ($LASTEXITCODE -ne 0) {
+    throw "[train:best] $StepName failed with exit code $LASTEXITCODE"
+  }
+}
+
 Write-Host "[train:best] dataset root: $DatasetRoot"
 Write-Host "[train:best] resized root: $ResizedRoot"
+Write-Host "[train:best] Step 0/3: verify CUDA runtime..."
+python -c "import torch, sys; print('[train:best] torch=' + torch.__version__); print('[train:best] cuda=' + str(torch.version.cuda)); print('[train:best] cuda_available=' + str(torch.cuda.is_available())); print('[train:best] device=' + (torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU')); sys.exit(0 if torch.cuda.is_available() else 2)"
+Assert-LastExitCode "CUDA preflight"
 
 if (-not $SkipResize) {
   Write-Host "[train:best] Step 1/3: prepare resized dataset..."
@@ -26,8 +35,9 @@ if (-not $SkipResize) {
     --output-root "$ResizedRoot" `
     --size $Resize `
     --quality 90 `
-    --workers 12 `
+    --workers $NumWorkers `
     --skip-existing
+  Assert-LastExitCode "dataset resize"
 } else {
   Write-Host "[train:best] Step 1/3: skip resize"
 }
@@ -58,6 +68,7 @@ python ai-service/scripts/train_nih_multitask.py `
   --num-workers $NumWorkers `
   --prefetch-factor $PrefetchFactor `
   --output-dir "$OutputDir"
+Assert-LastExitCode "model training"
 
 $checkpoint = if ($Backbone -eq "densenet121") {
   Join-Path $OutputDir "nih_multitask_best.pt"
@@ -71,6 +82,7 @@ if ($ExportOnnx) {
     --checkpoint "$checkpoint" `
     --output "../models/cxr_multitask.onnx" `
     --input-size $ImageSize
+  Assert-LastExitCode "onnx export"
 } else {
   Write-Host "[train:best] Step 3/3: skip ONNX export (use -ExportOnnx to enable)"
 }
