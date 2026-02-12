@@ -212,6 +212,7 @@ npm run train:best
 ```
 
 默认会执行：离线缩放(512) -> 训练(最佳实践参数)。
+训练时会保存每轮权重到 `ai-service/models/epochs/epoch_*.pt`，方便直接拿 `epoch_3.pt` 做推理对比。
 
 可选参数示例（导出 ONNX 并重建 AI 服务）：
 

@@ -54,6 +54,7 @@ python ai-service/scripts/train_nih_multitask.py `
   --grad-clip 1.0 `
   --early-stop-patience 2 `
   --early-stop-min-delta 0.001 `
+  --save-epoch-checkpoints `
   --num-workers $NumWorkers `
   --prefetch-factor $PrefetchFactor `
   --output-dir "$OutputDir"

@@ -769,8 +769,9 @@ def train_loop(
     device: torch.device,
     best_path: Path,
     last_path: Path,
+    epoch_dir: Path,
     train_samples: Sequence[Sample],
-) -> Tuple[float, List[Dict[str, float]]]:
+) -> Tuple[float, int, List[Dict[str, float]]]:
     pos_weight = compute_pos_weight(train_samples).to(device)
     class_weights = torch.tensor(parse_class_loss_weights(args.class_loss_weights), dtype=torch.float32).to(device)
     if args.loss_type == "focal":
@@ -787,6 +788,7 @@ def train_loop(
     scaler = GradScaler(enabled=(args.amp and device.type == "cuda"))
 
     best_auc = -1.0
+    best_epoch = 0
     best_val_loss = float("inf")
     no_improve_epochs = 0
     val_loss_rise_streak = 0
@@ -853,6 +855,8 @@ def train_loop(
 
         ckpt = checkpoint_payload(model, args, metrics)
         torch.save(ckpt, last_path)
+        if args.save_epoch_checkpoints:
+            torch.save(ckpt, epoch_dir / f"epoch_{epoch}.pt")
         val_auc = float(metrics["val_mean_auc"])
         val_loss = float(metrics["val_loss"])
         if val_loss < best_val_loss:
@@ -865,6 +869,7 @@ def train_loop(
 
         if val_auc > (best_auc + args.early_stop_min_delta):
             best_auc = metrics["val_mean_auc"]
+            best_epoch = epoch
             torch.save(ckpt, best_path)
             no_improve_epochs = 0
         else:
@@ -882,7 +887,7 @@ def train_loop(
                 f"for {args.early_stop_patience} epoch(s)."
             )
             break
-    return best_auc, history
+    return best_auc, best_epoch, history
 
 
 def compute_pos_weight(samples: Sequence[Sample]) -> torch.Tensor:
@@ -978,7 +983,10 @@ def train(args: argparse.Namespace) -> None:
     training_banner(args, train_size=len(train_samples), val_size=len(val_samples))
 
     best_path, last_path = build_checkpoint_paths(output_dir, args.backbone)
-    best_auc, history = train_loop(
+    epoch_dir = output_dir / "epochs"
+    if args.save_epoch_checkpoints:
+        epoch_dir.mkdir(parents=True, exist_ok=True)
+    best_auc, best_epoch, history = train_loop(
         model=model,
         teacher_model=teacher_model,
         train_loader=train_loader,
@@ -987,6 +995,7 @@ def train(args: argparse.Namespace) -> None:
         device=device,
         best_path=best_path,
         last_path=last_path,
+        epoch_dir=epoch_dir,
         train_samples=train_samples,
     )
 
@@ -1016,6 +1025,7 @@ def train(args: argparse.Namespace) -> None:
         "test_size": len(test_samples),
         "test_metrics": test_metrics,
         "best_mean_auc": best_auc,
+        "best_epoch": best_epoch,
         "best_checkpoint": str(best_path),
         "last_checkpoint": str(last_path),
         "history": history,
@@ -1103,6 +1113,7 @@ def build_argparser() -> argparse.ArgumentParser:
     )
     p.add_argument("--allow-small-csv", action="store_true")
     p.add_argument("--min-csv-rows", type=int, default=1000)
+    p.add_argument("--save-epoch-checkpoints", action="store_true", help="Save per-epoch checkpoints to output-dir/epochs")
     return p
 
 
