@@ -1,5 +1,8 @@
 package cache
 
+// File: internal/cache/memory.go
+// Purpose: Cache abstraction interfaces and cache backend implementations.
+
 import (
 	"context"
 	"strings"

@@ -4,7 +4,12 @@
 
 - Structured JSON access logs (request id, route, status, latency, user id, client ip).
 - Request correlation id middleware (`X-Request-Id`).
+- OpenTelemetry tracing (OTLP HTTP exporter, configurable).
+- gRPC tracing interceptors:
+  - client-side injection in gateway -> microservice calls
+  - server-side extraction in detection/report/governance services
 - Metrics endpoint: `GET /metrics` (Prometheus text format).
+- Inbound rate limiting and outbound circuit breaker/rate limiting for downstream protection.
 - Built-in alert events in logs for:
   - HTTP `5xx`
   - slow requests (`ALERT_SLOW_REQUEST_MS`, default `2000`)
@@ -15,6 +20,15 @@
 
 - `LOG_LEVEL` (`debug|info|warn|error`, default `info`)
 - `ALERT_SLOW_REQUEST_MS` (default `2000`)
+- `OTEL_ENABLED` (`true|false`)
+- `OTEL_EXPORTER_OTLP_ENDPOINT` (e.g. `localhost:4318`)
+- `OTEL_SERVICE_NAME` (default `cancer-detection-gateway`)
+- `OTEL_TRACE_SAMPLE_RATIO` (default `1.0`)
+- `INBOUND_RATE_LIMIT_RPS` / `INBOUND_RATE_LIMIT_BURST`
+- `AI_OUTBOUND_RATE_LIMIT_RPS` / `AI_OUTBOUND_RATE_LIMIT_BURST`
+- `UPSTREAM_BREAKER_FAIL_THRESHOLD`
+- `UPSTREAM_BREAKER_OPEN_SECONDS`
+- `UPSTREAM_BREAKER_HALF_OPEN_CALLS`
 
 ## Core metrics
 
@@ -31,3 +45,8 @@
 - AI failure rate above threshold for 5m
 - `/ready` not ready for continuous 3 checks
 
+## Log Correlation Fields
+
+- `request_id`: generated or forwarded request id.
+- `trace_id`: OpenTelemetry trace id for distributed tracing.
+- `span_id`: current request span id.

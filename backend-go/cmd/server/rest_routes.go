@@ -1,9 +1,16 @@
 package main
 
+// File: cmd/server/rest_routes.go
+// Purpose: Gateway handlers, middleware, and wiring for external HTTP APIs.
+
 import "github.com/gin-gonic/gin"
 
 func (a *app) registerRestRoutes(authed *gin.RouterGroup) {
-	if a.detectionServiceURL != "" {
+	if a.detectionBridge != nil {
+		authed.GET("/detections", a.grpcBridgeHandler(a.detectionBridge))
+		authed.GET("/detections/:id", a.grpcBridgeHandler(a.detectionBridge))
+		authed.POST("/detections/:id/review", a.grpcBridgeHandler(a.detectionBridge))
+	} else if a.detectionServiceURL != "" {
 		proxy := a.proxyTo(a.detectionServiceURL)
 		authed.GET("/detections", proxy)
 		authed.GET("/detections/:id", proxy)
@@ -14,7 +21,12 @@ func (a *app) registerRestRoutes(authed *gin.RouterGroup) {
 		authed.POST("/detections/:id/review", a.reviewDetection)
 	}
 
-	if a.reportServiceURL != "" {
+	if a.reportBridge != nil {
+		authed.GET("/reports", a.grpcBridgeHandler(a.reportBridge))
+		authed.GET("/reports/:id", a.grpcBridgeHandler(a.reportBridge))
+		authed.POST("/reports", a.grpcBridgeHandler(a.reportBridge))
+		authed.PATCH("/reports/:id", a.grpcBridgeHandler(a.reportBridge))
+	} else if a.reportServiceURL != "" {
 		proxy := a.proxyTo(a.reportServiceURL)
 		authed.GET("/reports", proxy)
 		authed.GET("/reports/:id", proxy)
@@ -27,7 +39,17 @@ func (a *app) registerRestRoutes(authed *gin.RouterGroup) {
 		authed.PATCH("/reports/:id", a.updateReport)
 	}
 
-	if a.governanceServiceURL != "" {
+	if a.governanceBridge != nil {
+		authed.GET("/audits", a.grpcBridgeHandler(a.governanceBridge))
+		authed.GET("/analytics/admin-overview", a.grpcBridgeHandler(a.governanceBridge))
+		authed.GET("/ops/readiness", a.grpcBridgeHandler(a.governanceBridge))
+		authed.GET("/ops/dashboard", a.grpcBridgeHandler(a.governanceBridge))
+		authed.GET("/ops/evidence", a.grpcBridgeHandler(a.governanceBridge))
+		authed.POST("/ops/evidence", a.grpcBridgeHandler(a.governanceBridge))
+		authed.GET("/ops/incidents", a.grpcBridgeHandler(a.governanceBridge))
+		authed.POST("/ops/incidents", a.grpcBridgeHandler(a.governanceBridge))
+		authed.POST("/ops/incidents/:id/transition", a.grpcBridgeHandler(a.governanceBridge))
+	} else if a.governanceServiceURL != "" {
 		proxy := a.proxyTo(a.governanceServiceURL)
 		authed.GET("/audits", proxy)
 		authed.GET("/analytics/admin-overview", proxy)

@@ -1,5 +1,8 @@
 package repository
 
+// File: internal/repository/detection.go
+// Purpose: Repository layer responsible for data access and persistence.
+
 import (
 	"context"
 	"time"
@@ -93,4 +96,3 @@ func (r *gormDetectionRepository) UpdateReview(ctx context.Context, id string, s
 	}
 	return r.db.WithContext(ctx).Model(&domain.Detection{}).Where("id = ?", id).Updates(updates).Error
 }
-

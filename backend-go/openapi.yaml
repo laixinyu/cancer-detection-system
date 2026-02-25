@@ -1,0 +1,690 @@
+openapi: 3.0.3
+info:
+  title: Cancer Detection Backend API
+  version: 1.0.0
+  description: |
+    Gateway-facing backend API.
+    Internal microservice communication may use gRPC, but external clients should use these HTTP endpoints.
+servers:
+  - url: http://localhost:8080
+tags:
+  - name: System
+  - name: Auth
+  - name: Images
+  - name: Detections
+  - name: Reports
+  - name: Audit
+  - name: Analytics
+  - name: Ops
+paths:
+  /health:
+    get:
+      tags: [System]
+      summary: Liveness probe
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+                  service: { type: string }
+                  timestamp: { type: string, format: date-time }
+  /ready:
+    get:
+      tags: [System]
+      summary: Readiness probe
+      responses:
+        "200":
+          description: Ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadyResponse"
+        "503":
+          description: Not ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadyResponse"
+  /metrics:
+    get:
+      tags: [System]
+      summary: Prometheus metrics
+      responses:
+        "200":
+          description: Metrics text
+          content:
+            text/plain:
+              schema:
+                type: string
+
+  /api/v1/auth/register:
+    post:
+      tags: [Auth]
+      summary: Register patient user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: "#/components/schemas/UserDTO"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /api/v1/auth/login:
+    post:
+      tags: [Auth]
+      summary: Login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string }
+                  user: { $ref: "#/components/schemas/UserDTO" }
+                  expiresAt: { type: string, format: date-time }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/images:
+    get:
+      tags: [Images]
+      summary: List images
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/LimitParam"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  images:
+                    type: array
+                    items: { type: object, additionalProperties: true }
+                  nextCursor: { type: string, nullable: true }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /api/v1/images/upload:
+    post:
+      tags: [Images]
+      summary: Upload image and trigger AI detection
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                consentAccepted:
+                  type: string
+                  example: "true"
+                consentVersion:
+                  type: string
+                  example: v1.0
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  image:
+                    type: object
+                    additionalProperties: true
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "502":
+          $ref: "#/components/responses/BadGateway"
+  /api/v1/images/{id}/file:
+    get:
+      tags: [Images]
+      summary: Fetch image binary
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "200":
+          description: Binary stream
+          content:
+            image/png: { schema: { type: string, format: binary } }
+            image/jpeg: { schema: { type: string, format: binary } }
+            image/tiff: { schema: { type: string, format: binary } }
+            application/dicom: { schema: { type: string, format: binary } }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/detections:
+    get:
+      tags: [Detections]
+      summary: List detections
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: status
+          schema: { type: string }
+        - in: query
+          name: priority
+          schema: { type: string, enum: [HIGH, MEDIUM, LOW] }
+        - in: query
+          name: orderByPriority
+          schema: { type: boolean, default: true }
+        - $ref: "#/components/parameters/LimitParam"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detections:
+                    type: array
+                    items: { type: object, additionalProperties: true }
+                  nextCursor: { type: string, nullable: true }
+  /api/v1/detections/{id}:
+    get:
+      tags: [Detections]
+      summary: Get detection by ID
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/detections/{id}/review:
+    post:
+      tags: [Detections]
+      summary: Review detection (DOCTOR/ADMIN)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DetectionReviewRequest"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/reports:
+    get:
+      tags: [Reports]
+      summary: List reports
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: status
+          schema: { type: string }
+        - in: query
+          name: patientId
+          schema: { type: string }
+        - $ref: "#/components/parameters/LimitParam"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  reports:
+                    type: array
+                    items: { type: object, additionalProperties: true }
+                  nextCursor: { type: string, nullable: true }
+    post:
+      tags: [Reports]
+      summary: Create or upsert report (DOCTOR/ADMIN)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReportCreateRequest"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /api/v1/reports/{id}:
+    get:
+      tags: [Reports]
+      summary: Get report by ID
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [Reports]
+      summary: Update report (DOCTOR/ADMIN)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReportUpdateRequest"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/audits:
+    get:
+      tags: [Audit]
+      summary: List audit logs (DOCTOR/ADMIN)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: action
+          schema: { type: string }
+        - in: query
+          name: entityType
+          schema: { type: string }
+        - in: query
+          name: entityId
+          schema: { type: string }
+        - in: query
+          name: result
+          schema: { type: string }
+        - $ref: "#/components/parameters/LimitParam"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  logs:
+                    type: array
+                    items: { type: object, additionalProperties: true }
+                  nextCursor: { type: string, nullable: true }
+
+  /api/v1/analytics/admin-overview:
+    get:
+      tags: [Analytics]
+      summary: Admin overview
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/v1/ops/readiness:
+    get:
+      tags: [Ops]
+      summary: Ops readiness
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+  /api/v1/ops/dashboard:
+    get:
+      tags: [Ops]
+      summary: Ops dashboard
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+  /api/v1/ops/evidence:
+    get:
+      tags: [Ops]
+      summary: List clinical evidence
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/LimitParam"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { type: object, additionalProperties: true }
+    post:
+      tags: [Ops]
+      summary: Create clinical evidence (ADMIN)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EvidenceCreateRequest"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /api/v1/ops/incidents:
+    get:
+      tags: [Ops]
+      summary: List incidents
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: status
+          schema: { type: string, enum: [OPEN, ACKNOWLEDGED, RESOLVED] }
+        - $ref: "#/components/parameters/LimitParam"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { type: object, additionalProperties: true }
+    post:
+      tags: [Ops]
+      summary: Create incident (ADMIN)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IncidentCreateRequest"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /api/v1/ops/incidents/{id}/transition:
+    post:
+      tags: [Ops]
+      summary: Transition incident (ADMIN)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action]
+              properties:
+                action:
+                  type: string
+                  enum: [ACKNOWLEDGE, RESOLVE, REOPEN]
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    IdParam:
+      in: path
+      name: id
+      required: true
+      schema: { type: string }
+    LimitParam:
+      in: query
+      name: limit
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+  responses:
+    BadRequest:
+      description: Bad Request
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    Forbidden:
+      description: Forbidden
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    NotFound:
+      description: Not Found
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    BadGateway:
+      description: Bad Gateway
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        details:
+          type: string
+          nullable: true
+    UserDTO:
+      type: object
+      properties:
+        id: { type: string }
+        email: { type: string, format: email }
+        name: { type: string }
+        role: { type: string }
+    ReadyResponse:
+      type: object
+      properties:
+        status: { type: string }
+        timestamp: { type: string, format: date-time }
+        database:
+          type: object
+          additionalProperties: true
+        ai:
+          type: object
+          additionalProperties: true
+    RegisterRequest:
+      type: object
+      required: [name, email, password]
+      properties:
+        name: { type: string }
+        email: { type: string, format: email }
+        password: { type: string, minLength: 8 }
+        role: { type: string, default: PATIENT }
+        phone: { type: string }
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string }
+    DetectionReviewRequest:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [REVIEWED, CONFIRMED]
+        reviewNotes:
+          type: string
+        findings:
+          type: object
+          additionalProperties: true
+    ReportCreateRequest:
+      type: object
+      required: [detectionId, patientId]
+      properties:
+        detectionId: { type: string }
+        patientId: { type: string }
+        content:
+          type: object
+          additionalProperties: true
+        status:
+          type: string
+          enum: [DRAFT, FINALIZED]
+          default: DRAFT
+    ReportUpdateRequest:
+      type: object
+      properties:
+        content:
+          type: object
+          additionalProperties: true
+        status:
+          type: string
+          enum: [DRAFT, FINALIZED]
+        pdfPath:
+          type: string
+    EvidenceCreateRequest:
+      type: object
+      required:
+        - runName
+        - modelVersion
+        - datasetName
+        - sampleCount
+        - positiveCount
+        - siteCount
+        - auroc
+        - sensitivity
+        - specificity
+      properties:
+        runName: { type: string }
+        modelVersion: { type: string }
+        datasetName: { type: string }
+        datasetVersion: { type: string }
+        sampleCount: { type: integer }
+        positiveCount: { type: integer }
+        siteCount: { type: integer }
+        auroc: { type: number, format: double }
+        sensitivity: { type: number, format: double }
+        specificity: { type: number, format: double }
+        ppv: { type: number, format: double }
+        npv: { type: number, format: double }
+        ece: { type: number, format: double }
+        brier: { type: number, format: double }
+        calibrationTemperature: { type: number, format: double }
+        thresholdHighSensitivity: { type: number, format: double }
+        thresholdHighSpecificity: { type: number, format: double }
+        stageRecommendation:
+          type: string
+          enum: [RESEARCH_ONLY, PILOT_DECISION_SUPPORT, CLINICAL_DECISION_SUPPORT]
+        regulatoryStatus:
+          type: string
+          enum: [NOT_SUBMITTED, SUBMITTED, APPROVED, REJECTED]
+        qaApprovedBy: { type: string }
+        medicalApprovedBy: { type: string }
+        reportPath: { type: string }
+        notes: { type: string }
+    IncidentCreateRequest:
+      type: object
+      required: [source, severity, title]
+      properties:
+        source:
+          type: string
+          enum: [AI_SERVICE, APP, DATABASE, PIPELINE, SECURITY, OTHER]
+        severity:
+          type: string
+          enum: [P0, P1, P2, P3]
+        title: { type: string }
+        detail: { type: string }
+        ownerUserId: { type: string }
+

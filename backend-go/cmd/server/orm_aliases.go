@@ -1,5 +1,8 @@
 package main
 
+// File: cmd/server/orm_aliases.go
+// Purpose: Gateway handlers, middleware, and wiring for external HTTP APIs.
+
 import "cancer-detection-backend/internal/domain"
 
 type ormUser = domain.User

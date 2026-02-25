@@ -1,5 +1,8 @@
 package cache
 
+// File: internal/cache/noop.go
+// Purpose: Cache abstraction interfaces and cache backend implementations.
+
 import (
 	"context"
 	"time"

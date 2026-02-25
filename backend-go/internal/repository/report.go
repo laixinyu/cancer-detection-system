@@ -1,5 +1,8 @@
 package repository
 
+// File: internal/repository/report.go
+// Purpose: Repository layer responsible for data access and persistence.
+
 import (
 	"context"
 	"time"
@@ -98,4 +101,3 @@ func (r *gormReportRepository) GetDetection(ctx context.Context, detectionID str
 	}
 	return &row, nil
 }
-

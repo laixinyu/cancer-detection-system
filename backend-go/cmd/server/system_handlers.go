@@ -1,5 +1,8 @@
 package main
 
+// File: cmd/server/system_handlers.go
+// Purpose: Gateway handlers, middleware, and wiring for external HTTP APIs.
+
 import (
 	"context"
 	"fmt"
@@ -19,8 +22,7 @@ func (a *app) ready(c *gin.Context) {
 
 	dbReady := true
 	dbErr := ""
-	var n int64
-	if err := a.orm.WithContext(ctx).Model(&ormUser{}).Limit(1).Count(&n).Error; err != nil {
+	if err := a.opsService.DBReady(ctx); err != nil {
 		dbReady = false
 		dbErr = err.Error()
 	}

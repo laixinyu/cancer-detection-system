@@ -1,13 +1,35 @@
 package main
 
+// File: cmd/server/request_middleware.go
+// Purpose: Gateway handlers, middleware, and wiring for external HTTP APIs.
+
 import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 )
+
+func (a *app) rateLimitMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if a.inboundLimiter == nil {
+			c.Next()
+			return
+		}
+		key := strings.TrimSpace(c.ClientIP())
+		if key == "" {
+			key = "unknown"
+		}
+		if !a.inboundLimiter.Allow(key) {
+			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{"error": "Too many requests"})
+			return
+		}
+		c.Next()
+	}
+}
 
 func timeoutMiddleware(timeout time.Duration) gin.HandlerFunc {
 	return func(c *gin.Context) {

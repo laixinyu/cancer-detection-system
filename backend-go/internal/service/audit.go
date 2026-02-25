@@ -1,5 +1,8 @@
 package service
 
+// File: internal/service/audit.go
+// Purpose: Service layer containing business rules and orchestration logic.
+
 import (
 	"context"
 	"encoding/json"

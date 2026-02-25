@@ -1,5 +1,8 @@
 package service
 
+// File: internal/service/report.go
+// Purpose: Service layer containing business rules and orchestration logic.
+
 import (
 	"context"
 	"encoding/json"
@@ -13,12 +16,12 @@ import (
 )
 
 var (
-	ErrInvalidReportStatus = errors.New("invalid report status")
+	ErrInvalidReportStatus     = errors.New("invalid report status")
 	ErrInvalidReportTransition = errors.New("invalid report status transition")
-	ErrInvalidReportPayload = errors.New("detectionId and patientId are required")
-	ErrDetectionNotReviewed = errors.New("detection must be reviewed before report creation")
-	ErrPatientMismatch = errors.New("patientId does not match detection patient")
-	ErrNoReportFieldsToUpdate = errors.New("no fields to update")
+	ErrInvalidReportPayload    = errors.New("detectionId and patientId are required")
+	ErrDetectionNotReviewed    = errors.New("detection must be reviewed before report creation")
+	ErrPatientMismatch         = errors.New("patientId does not match detection patient")
+	ErrNoReportFieldsToUpdate  = errors.New("no fields to update")
 )
 
 type ReportService struct {
@@ -190,4 +193,3 @@ func (s *ReportService) Update(ctx context.Context, in UpdateReportInput) (*doma
 	}
 	return updated, oldStatus, updatedFields, nil
 }
-

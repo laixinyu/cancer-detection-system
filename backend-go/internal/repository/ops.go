@@ -1,5 +1,8 @@
 package repository
 
+// File: internal/repository/ops.go
+// Purpose: Repository layer responsible for data access and persistence.
+
 import (
 	"context"
 	"time"
@@ -107,4 +110,3 @@ func (r *gormOpsRepository) GetPatientByUserID(ctx context.Context, userID strin
 func (r *gormOpsRepository) CreatePatient(ctx context.Context, row *domain.Patient) error {
 	return r.db.WithContext(ctx).Create(row).Error
 }
-

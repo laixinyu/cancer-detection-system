@@ -1,5 +1,8 @@
 package main
 
+// File: cmd/server/ops_handlers.go
+// Purpose: Gateway handlers, middleware, and wiring for external HTTP APIs.
+
 import (
 	"encoding/json"
 	"errors"

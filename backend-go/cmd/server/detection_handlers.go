@@ -1,5 +1,8 @@
 package main
 
+// File: cmd/server/detection_handlers.go
+// Purpose: Gateway handlers, middleware, and wiring for external HTTP APIs.
+
 import (
 	"errors"
 	"net/http"

@@ -1,5 +1,8 @@
 package main
 
+// File: cmd/server/runtime_utils.go
+// Purpose: Gateway handlers, middleware, and wiring for external HTTP APIs.
+
 import (
 	"os"
 	"strings"

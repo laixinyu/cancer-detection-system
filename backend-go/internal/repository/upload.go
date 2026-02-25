@@ -1,5 +1,8 @@
 package repository
 
+// File: internal/repository/upload.go
+// Purpose: Repository layer responsible for data access and persistence.
+
 import (
 	"context"
 	"time"
@@ -65,4 +68,3 @@ func (r *gormUploadRepository) GetImageByID(ctx context.Context, id string) (*do
 	}
 	return &row, nil
 }
-

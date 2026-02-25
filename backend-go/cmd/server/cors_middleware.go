@@ -1,5 +1,8 @@
 package main
 
+// File: cmd/server/cors_middleware.go
+// Purpose: Gateway handlers, middleware, and wiring for external HTTP APIs.
+
 import (
 	"net/http"
 

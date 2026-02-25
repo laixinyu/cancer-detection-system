@@ -1,8 +1,10 @@
 package main
 
+// File: cmd/server/upload_handlers.go
+// Purpose: Gateway handlers, middleware, and wiring for external HTTP APIs.
+
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,10 +18,11 @@ import (
 	"strings"
 	"time"
 
+	"cancer-detection-backend/internal/domain"
+	"cancer-detection-backend/internal/resilience"
+
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 func (a *app) listImages(c *gin.Context) {
@@ -36,18 +39,8 @@ func (a *app) listImages(c *gin.Context) {
 		return
 	}
 
-	query := a.orm.WithContext(c.Request.Context()).
-		Model(&ormImage{}).
-		Preload("Detections", func(db *gorm.DB) *gorm.DB {
-			return db.Order("created_at DESC")
-		}).
-		Order("created_at DESC").
-		Limit(limit + 1)
-	if claims.Role == "PATIENT" {
-		query = query.Where("uploaded_by = ?", claims.UserID)
-	}
-	var images []ormImage
-	if err := query.Find(&images).Error; err != nil {
+	images, next, err := a.uploadService.ListImages(c.Request.Context(), claims.Role, claims.UserID, limit)
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list images"})
 		return
 	}
@@ -80,9 +73,8 @@ func (a *app) listImages(c *gin.Context) {
 		})
 	}
 	var nextCursor any = nil
-	if len(items) > limit {
-		nextCursor = items[len(items)-1]["id"]
-		items = items[:len(items)-1]
+	if next != nil {
+		nextCursor = *next
 	}
 	response := gin.H{"images": items, "nextCursor": nextCursor}
 	a.cacheSet(c, cacheKey, response, 15*time.Second)
@@ -134,7 +126,7 @@ func (a *app) uploadImage(c *gin.Context) {
 	}
 
 	ctx := c.Request.Context()
-	patientID, err := a.findOrCreatePatient(ctx, claims.UserID, claims.Role)
+	patientID, err := a.uploadService.FindOrCreatePatient(ctx, claims.UserID, claims.Role)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -146,7 +138,7 @@ func (a *app) uploadImage(c *gin.Context) {
 	}
 
 	if claims.Role == "PATIENT" && consentAccepted {
-		consent := ormPatientConsent{
+		consent := &domain.PatientConsent{
 			PatientID:        patientID,
 			ConsentType:      "AI_ANALYSIS",
 			ConsentVersion:   consentVersion,
@@ -155,10 +147,7 @@ func (a *app) uploadImage(c *gin.Context) {
 			AcceptedByUserID: claims.UserID,
 			UpdatedAt:        time.Now().UTC(),
 		}
-		if err := a.orm.WithContext(ctx).Clauses(clause.OnConflict{
-			Columns:   []clause.Column{{Name: "patient_id"}, {Name: "consent_type"}, {Name: "consent_version"}},
-			DoUpdates: clause.AssignmentColumns([]string{"accepted", "accepted_at", "accepted_by_user_id", "updated_at"}),
-		}).Create(&consent).Error; err != nil {
+		if err := a.uploadService.SaveConsent(ctx, consent); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save consent"})
 			return
 		}
@@ -172,7 +161,7 @@ func (a *app) uploadImage(c *gin.Context) {
 	}
 	storedPath := a.uploadPrefix + "/" + fileName
 
-	imageRecord := ormImage{
+	imageRecord := &domain.Image{
 		PatientID:    patientID,
 		FilePath:     storedPath,
 		FileType:     fileTypeEnum(fileType),
@@ -181,7 +170,7 @@ func (a *app) uploadImage(c *gin.Context) {
 		Status:       "PROCESSING",
 		UploadedBy:   claims.UserID,
 	}
-	if err := a.orm.WithContext(ctx).Create(&imageRecord).Error; err != nil {
+	if err := a.uploadService.CreateImage(ctx, imageRecord); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create image record"})
 		return
 	}
@@ -194,10 +183,7 @@ func (a *app) uploadImage(c *gin.Context) {
 
 	aiResult, aiErr := a.callAI(fileHeader.Filename, data)
 	if aiErr != nil {
-		_ = a.orm.WithContext(ctx).Model(&ormImage{}).Where("id = ?", img.ID).Updates(map[string]any{
-			"status":     "FAILED",
-			"updated_at": time.Now().UTC(),
-		}).Error
+		_ = a.uploadService.MarkImageFailed(ctx, img.ID)
 		img.Status = "FAILED"
 		a.cacheInvalidatePrefixes(c, "image:list:", "detection:list:", "analytics:")
 		c.JSON(http.StatusBadGateway, gin.H{
@@ -224,7 +210,7 @@ func (a *app) uploadImage(c *gin.Context) {
 		"detectorModelLoaded":     boolValue(aiResult.DetectorModelLoaded),
 	})
 
-	detection := ormDetection{
+	detection := &domain.Detection{
 		ImageID:           img.ID,
 		ModelVersion:      aiResult.ModelVersion,
 		CancerProbability: aiResult.CancerProbability,
@@ -232,21 +218,15 @@ func (a *app) uploadImage(c *gin.Context) {
 		HeatmapPath:       aiResult.HeatmapPath,
 		Status:            "PENDING",
 	}
-	if err := a.orm.WithContext(ctx).Create(&detection).Error; err != nil {
-		_ = a.orm.WithContext(ctx).Model(&ormImage{}).Where("id = ?", img.ID).Updates(map[string]any{
-			"status":     "FAILED",
-			"updated_at": time.Now().UTC(),
-		}).Error
+	if err := a.uploadService.CreateDetection(ctx, detection); err != nil {
+		_ = a.uploadService.MarkImageFailed(ctx, img.ID)
 		img.Status = "FAILED"
 		a.cacheInvalidatePrefixes(c, "image:list:", "detection:list:", "analytics:")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save detection"})
 		return
 	}
 
-	if err := a.orm.WithContext(ctx).Model(&ormImage{}).Where("id = ?", img.ID).Updates(map[string]any{
-		"status":     "COMPLETED",
-		"updated_at": time.Now().UTC(),
-	}).Error; err != nil {
+	if err := a.uploadService.MarkImageCompleted(ctx, img.ID); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to finalize image"})
 		return
 	}
@@ -265,22 +245,16 @@ func (a *app) imageFile(c *gin.Context) {
 	}
 
 	id := c.Param("id")
-	var img ormImage
-	if err := a.orm.WithContext(c.Request.Context()).
-		Select("id", "file_path", "original_name", "uploaded_by").
-		Where("id = ?", id).
-		First(&img).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Image not found"})
-		return
-	}
-
-	if claims.Role == "PATIENT" && img.UploadedBy != claims.UserID {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Forbidden"})
-		return
-	}
-
-	if !strings.HasPrefix(img.FilePath, a.uploadPrefix+"/") {
-		c.JSON(http.StatusBadGateway, gin.H{"error": "Unsupported storage path"})
+	img, err := a.uploadService.GetImageFileMeta(c.Request.Context(), id, claims.Role, claims.UserID, a.uploadPrefix)
+	if err != nil {
+		switch err.Error() {
+		case "forbidden":
+			c.JSON(http.StatusForbidden, gin.H{"error": "Forbidden"})
+		case "unsupported storage path":
+			c.JSON(http.StatusBadGateway, gin.H{"error": "Unsupported storage path"})
+		default:
+			c.JSON(http.StatusNotFound, gin.H{"error": "Image not found"})
+		}
 		return
 	}
 
@@ -299,6 +273,18 @@ func (a *app) imageFile(c *gin.Context) {
 
 func (a *app) callAI(fileName string, data []byte) (*aiResponse, error) {
 	a.metrics.IncAIRequest()
+	if a.aiLimiter != nil && !a.aiLimiter.Allow("ai-service") {
+		a.metrics.IncAIFailure()
+		return nil, fmt.Errorf("ai request rate limited")
+	}
+	breaker := a.upstreamBreakers.For("ai-service")
+	if err := breaker.Allow(); err != nil {
+		a.metrics.IncAIFailure()
+		if errors.Is(err, resilience.ErrCircuitOpen) {
+			return nil, fmt.Errorf("ai circuit open")
+		}
+		return nil, err
+	}
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
 	part, err := writer.CreateFormFile("file", fileName)
@@ -320,6 +306,7 @@ func (a *app) callAI(fileName string, data []byte) (*aiResponse, error) {
 
 	resp, err := a.httpClient.Do(req)
 	if err != nil {
+		breaker.RecordFailure()
 		a.metrics.IncAIFailure()
 		a.logger.Warn("alert_ai_call_failed", "error", err.Error(), "alert_code", "AI_UNREACHABLE")
 		return nil, err
@@ -328,6 +315,7 @@ func (a *app) callAI(fileName string, data []byte) (*aiResponse, error) {
 
 	respBody, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode >= 400 {
+		breaker.RecordFailure()
 		a.metrics.IncAIFailure()
 		a.logger.Warn("alert_ai_call_failed", "status", resp.StatusCode, "alert_code", "AI_BAD_STATUS")
 		return nil, fmt.Errorf("AI service request failed: %d %s", resp.StatusCode, strings.TrimSpace(string(respBody)))
@@ -335,36 +323,17 @@ func (a *app) callAI(fileName string, data []byte) (*aiResponse, error) {
 
 	var result aiResponse
 	if err := json.Unmarshal(respBody, &result); err != nil {
+		breaker.RecordFailure()
 		a.metrics.IncAIFailure()
 		a.logger.Warn("alert_ai_call_failed", "error", "invalid_payload", "alert_code", "AI_INVALID_PAYLOAD")
 		return nil, fmt.Errorf("invalid AI payload")
 	}
 	if result.ModelVersion == "" {
+		breaker.RecordFailure()
 		a.metrics.IncAIFailure()
 		a.logger.Warn("alert_ai_call_failed", "error", "missing_model_version", "alert_code", "AI_INVALID_PAYLOAD")
 		return nil, fmt.Errorf("invalid AI payload")
 	}
+	breaker.RecordSuccess()
 	return &result, nil
-}
-
-func (a *app) findOrCreatePatient(ctx context.Context, userID, role string) (string, error) {
-	var patient ormPatient
-	if err := a.orm.WithContext(ctx).Where("user_id = ?", userID).First(&patient).Error; err == nil {
-		return patient.ID, nil
-	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
-		return "", errors.New("Failed to query patient profile")
-	}
-	if role != "PATIENT" {
-		return "", errors.New("Patient profile not found")
-	}
-
-	patient = ormPatient{
-		UserID:      userID,
-		DateOfBirth: time.Date(1990, 1, 1, 0, 0, 0, 0, time.UTC),
-		Gender:      "OTHER",
-	}
-	if err := a.orm.WithContext(ctx).Create(&patient).Error; err != nil {
-		return "", errors.New("Patient profile not found")
-	}
-	return patient.ID, nil
 }

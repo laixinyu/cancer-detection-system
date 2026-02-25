@@ -1,5 +1,8 @@
 package repository
 
+// File: internal/repository/audit.go
+// Purpose: Repository layer responsible for data access and persistence.
+
 import (
 	"context"
 

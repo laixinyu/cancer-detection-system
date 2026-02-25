@@ -1,5 +1,8 @@
 package main
 
+// File: cmd/server/analytics_handlers.go
+// Purpose: Gateway handlers, middleware, and wiring for external HTTP APIs.
+
 import (
 	"net/http"
 	"time"

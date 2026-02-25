@@ -1,5 +1,8 @@
 package main
 
+// File: cmd/server/main.go
+// Purpose: Gateway handlers, middleware, and wiring for external HTTP APIs.
+
 import (
 	"context"
 	"log"
@@ -9,6 +12,7 @@ import (
 	"syscall"
 
 	"cancer-detection-backend/internal/config"
+	"cancer-detection-backend/internal/observability"
 )
 
 func main() {
@@ -18,6 +22,16 @@ func main() {
 	}
 
 	ctx := context.Background()
+	traceShutdown, err := observability.InitTracing(ctx, cfg)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer func() {
+		if shutdownErr := traceShutdown(context.Background()); shutdownErr != nil {
+			log.Printf("trace shutdown error: %v", shutdownErr)
+		}
+	}()
+
 	a, err := newApp(ctx, cfg)
 	if err != nil {
 		log.Fatal(err)

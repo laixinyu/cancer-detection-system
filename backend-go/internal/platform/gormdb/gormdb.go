@@ -1,5 +1,8 @@
 package gormdb
 
+// File: internal/platform/gormdb/gormdb.go
+// Purpose: Platform integration helpers such as database bootstrapping.
+
 import (
 	"fmt"
 

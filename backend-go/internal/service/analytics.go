@@ -1,5 +1,8 @@
 package service
 
+// File: internal/service/analytics.go
+// Purpose: Service layer containing business rules and orchestration logic.
+
 import (
 	"context"
 
@@ -116,4 +119,3 @@ func (s *AnalyticsService) AdminOverview(ctx context.Context) (*AdminOverviewOut
 		RecentActivity:    recentActivity,
 	}, nil
 }
-

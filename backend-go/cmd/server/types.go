@@ -1,5 +1,8 @@
 package main
 
+// File: cmd/server/types.go
+// Purpose: Gateway handlers, middleware, and wiring for external HTTP APIs.
+
 import (
 	"log/slog"
 	"net/http"
@@ -8,10 +11,14 @@ import (
 	"cancer-detection-backend/internal/cache"
 	"cancer-detection-backend/internal/observability"
 	"cancer-detection-backend/internal/repository"
+	"cancer-detection-backend/internal/resilience"
+	"cancer-detection-backend/internal/rpc/bridge"
 	"cancer-detection-backend/internal/service"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"go.opentelemetry.io/otel/trace"
+	"google.golang.org/grpc"
 	"gorm.io/gorm"
 )
 
@@ -42,6 +49,16 @@ type app struct {
 	uploadDir            string
 	uploadPrefix         string
 	httpClient           *http.Client
+	inboundLimiter       *resilience.KeyedLimiter
+	aiLimiter            *resilience.KeyedLimiter
+	upstreamBreakers     *resilience.BreakerGroup
+	tracer               trace.Tracer
+	detectionGRPCConn    *grpc.ClientConn
+	reportGRPCConn       *grpc.ClientConn
+	governanceGRPCConn   *grpc.ClientConn
+	detectionBridge      bridge.ServiceClient
+	reportBridge         bridge.ServiceClient
+	governanceBridge     bridge.ServiceClient
 }
 
 type authClaims struct {

@@ -1,5 +1,8 @@
 package service
 
+// File: internal/service/detection.go
+// Purpose: Service layer containing business rules and orchestration logic.
+
 import (
 	"context"
 	"encoding/json"
@@ -11,7 +14,7 @@ import (
 )
 
 var (
-	ErrInvalidDetectionStatus = errors.New("invalid status")
+	ErrInvalidDetectionStatus     = errors.New("invalid status")
 	ErrInvalidDetectionTransition = errors.New("invalid detection status transition")
 )
 
@@ -102,4 +105,3 @@ func (s *DetectionService) Review(ctx context.Context, in ReviewDetectionInput) 
 	}
 	return updated, oldStatus, nil
 }
-

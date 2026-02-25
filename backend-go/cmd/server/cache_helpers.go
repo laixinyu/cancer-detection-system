@@ -1,5 +1,8 @@
 package main
 
+// File: cmd/server/cache_helpers.go
+// Purpose: Gateway handlers, middleware, and wiring for external HTTP APIs.
+
 import (
 	"encoding/json"
 	"time"

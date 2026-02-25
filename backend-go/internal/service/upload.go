@@ -1,5 +1,8 @@
 package service
 
+// File: internal/service/upload.go
+// Purpose: Service layer containing business rules and orchestration logic.
+
 import (
 	"context"
 	"errors"
@@ -76,4 +79,3 @@ func (s *UploadService) GetImageFileMeta(ctx context.Context, id, role, userID, 
 	}
 	return img, nil
 }
-

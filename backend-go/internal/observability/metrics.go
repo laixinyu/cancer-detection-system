@@ -1,5 +1,8 @@
 package observability
 
+// File: internal/observability/metrics.go
+// Purpose: Metrics and observability primitives for runtime monitoring.
+
 import (
 	"fmt"
 	"sort"

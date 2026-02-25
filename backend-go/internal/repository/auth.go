@@ -1,5 +1,8 @@
 package repository
 
+// File: internal/repository/auth.go
+// Purpose: Repository layer responsible for data access and persistence.
+
 import (
 	"context"
 
@@ -39,4 +42,3 @@ func (r *gormAuthRepository) FindByEmail(ctx context.Context, email string) (*do
 	}
 	return &user, nil
 }
-

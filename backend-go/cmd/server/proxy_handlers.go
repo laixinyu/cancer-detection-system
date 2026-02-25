@@ -1,16 +1,31 @@
 package main
 
+// File: cmd/server/proxy_handlers.go
+// Purpose: Gateway handlers, middleware, and wiring for external HTTP APIs.
+
 import (
 	"bytes"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
+
+	"cancer-detection-backend/internal/resilience"
 
 	"github.com/gin-gonic/gin"
 )
 
 func (a *app) proxyTo(baseURL string) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		breaker := a.upstreamBreakers.For(baseURL)
+		if err := breaker.Allow(); err != nil {
+			if errors.Is(err, resilience.ErrCircuitOpen) {
+				c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Upstream temporarily unavailable"})
+				return
+			}
+			c.JSON(http.StatusBadGateway, gin.H{"error": "Upstream unavailable"})
+			return
+		}
 		targetURL := baseURL + c.Request.URL.Path
 		if q := c.Request.URL.RawQuery; q != "" {
 			targetURL += "?" + q
@@ -36,10 +51,16 @@ func (a *app) proxyTo(baseURL string) gin.HandlerFunc {
 		copyHeaders(c.Request.Header, req.Header)
 		resp, err := a.httpClient.Do(req)
 		if err != nil {
+			breaker.RecordFailure()
 			c.JSON(http.StatusBadGateway, gin.H{"error": "Upstream service unavailable"})
 			return
 		}
 		defer resp.Body.Close()
+		if resp.StatusCode >= http.StatusBadGateway {
+			breaker.RecordFailure()
+		} else {
+			breaker.RecordSuccess()
+		}
 
 		copyResponseHeaders(resp.Header, c.Writer.Header())
 		c.Status(resp.StatusCode)

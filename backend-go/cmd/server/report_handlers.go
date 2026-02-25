@@ -1,5 +1,8 @@
 package main
 
+// File: cmd/server/report_handlers.go
+// Purpose: Gateway handlers, middleware, and wiring for external HTTP APIs.
+
 import (
 	"errors"
 	"net/http"
@@ -266,4 +269,3 @@ func (a *app) updateReport(c *gin.Context) {
 	})
 	a.cacheInvalidatePrefixes(c, "report:list:", "analytics:", "audit:list:")
 }
-

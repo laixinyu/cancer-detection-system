@@ -1,5 +1,8 @@
 package service
 
+// File: internal/service/auth.go
+// Purpose: Service layer containing business rules and orchestration logic.
+
 import (
 	"context"
 	"errors"
@@ -21,10 +24,10 @@ func NewAuthService(repo repository.AuthRepository) *AuthService {
 }
 
 var (
-	ErrInvalidRegisterPayload = errors.New("name/email/password is invalid")
+	ErrInvalidRegisterPayload  = errors.New("name/email/password is invalid")
 	ErrOnlyPatientSelfRegister = errors.New("only patient role can self-register")
-	ErrUserExists = errors.New("user already exists")
-	ErrInvalidCredentials = errors.New("invalid credentials")
+	ErrUserExists              = errors.New("user already exists")
+	ErrInvalidCredentials      = errors.New("invalid credentials")
 )
 
 type RegisterInput struct {
@@ -111,4 +114,3 @@ func toStrPtr(v string) *string {
 	}
 	return &s
 }
-

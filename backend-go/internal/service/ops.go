@@ -1,5 +1,8 @@
 package service
 
+// File: internal/service/ops.go
+// Purpose: Service layer containing business rules and orchestration logic.
+
 import (
 	"context"
 	"errors"
@@ -13,8 +16,8 @@ import (
 )
 
 var (
-	ErrInvalidIncidentStatus = errors.New("invalid status")
-	ErrInvalidIncidentPayload = errors.New("invalid incident payload")
+	ErrInvalidIncidentStatus     = errors.New("invalid status")
+	ErrInvalidIncidentPayload    = errors.New("invalid incident payload")
 	ErrInvalidIncidentTransition = errors.New("invalid incident transition")
 )
 
@@ -165,4 +168,3 @@ func containsString(items []string, value string) bool {
 	}
 	return false
 }
-

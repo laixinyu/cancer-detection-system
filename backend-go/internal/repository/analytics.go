@@ -1,5 +1,8 @@
 package repository
 
+// File: internal/repository/analytics.go
+// Purpose: Repository layer responsible for data access and persistence.
+
 import (
 	"context"
 
@@ -81,4 +84,3 @@ func (r *gormAnalyticsRepository) ListRecentAuditLogs(ctx context.Context, limit
 	err := r.db.WithContext(ctx).Preload("ActorUser").Order("created_at DESC").Limit(limit).Find(&rows).Error
 	return rows, err
 }
-

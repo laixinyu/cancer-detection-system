@@ -1,6 +1,10 @@
 package main
 
+// File: cmd/server/observability_middleware.go
+// Purpose: Gateway handlers, middleware, and wiring for external HTTP APIs.
+
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -8,6 +12,10 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/trace"
 )
 
 const requestIDHeader = "X-Request-Id"
@@ -44,6 +52,8 @@ func (a *app) accessLogMiddleware() gin.HandlerFunc {
 		a.metrics.ObserveHTTP(c.Request.Method, route, status, latency.Milliseconds())
 		a.logger.Info("http_request",
 			slog.String("request_id", toString(reqID)),
+			slog.String("trace_id", traceIDFromContext(c.Request.Context())),
+			slog.String("span_id", spanIDFromContext(c.Request.Context())),
 			slog.String("method", c.Request.Method),
 			slog.String("route", route),
 			slog.Int("status", status),
@@ -55,6 +65,7 @@ func (a *app) accessLogMiddleware() gin.HandlerFunc {
 		if status >= http.StatusInternalServerError || latency > a.slowRequestThreshold {
 			a.logger.Warn("alert_http_request",
 				slog.String("request_id", toString(reqID)),
+				slog.String("trace_id", traceIDFromContext(c.Request.Context())),
 				slog.String("method", c.Request.Method),
 				slog.String("route", route),
 				slog.Int("status", status),
@@ -62,6 +73,34 @@ func (a *app) accessLogMiddleware() gin.HandlerFunc {
 				slog.String("alert_code", alertCode(status, latency, a.slowRequestThreshold)),
 			)
 		}
+	}
+}
+
+func (a *app) traceMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if a.tracer == nil {
+			c.Next()
+			return
+		}
+		ctx := propagation.TraceContext{}.Extract(c.Request.Context(), propagation.HeaderCarrier(c.Request.Header))
+		ctx, span := a.tracer.Start(ctx, c.Request.Method+" "+c.FullPath())
+		span.SetAttributes(
+			attribute.String("http.method", c.Request.Method),
+			attribute.String("http.route", c.FullPath()),
+			attribute.String("http.target", c.Request.URL.Path),
+		)
+		c.Request = c.Request.WithContext(ctx)
+		defer func() {
+			status := c.Writer.Status()
+			span.SetAttributes(attribute.Int("http.status_code", status))
+			if status >= http.StatusInternalServerError {
+				span.SetStatus(codes.Error, http.StatusText(status))
+			} else {
+				span.SetStatus(codes.Ok, "")
+			}
+			span.End()
+		}()
+		c.Next()
 	}
 }
 
@@ -82,4 +121,20 @@ func alertCode(status int, latency, threshold time.Duration) string {
 		return "SLOW_REQUEST"
 	}
 	return "UNKNOWN"
+}
+
+func traceIDFromContext(ctx context.Context) string {
+	sc := trace.SpanContextFromContext(ctx)
+	if !sc.IsValid() {
+		return ""
+	}
+	return sc.TraceID().String()
+}
+
+func spanIDFromContext(ctx context.Context) string {
+	sc := trace.SpanContextFromContext(ctx)
+	if !sc.IsValid() {
+		return ""
+	}
+	return sc.SpanID().String()
 }

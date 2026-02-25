@@ -1,5 +1,8 @@
 package domain
 
+// File: internal/domain/models.go
+// Purpose: Domain entities and model definitions shared across layers.
+
 import "time"
 
 type User struct {
@@ -60,9 +63,9 @@ type Detection struct {
 	CreatedAt         time.Time `gorm:"column:created_at"`
 	UpdatedAt         time.Time `gorm:"column:updated_at"`
 
-	Image    Image     `gorm:"foreignKey:ImageID;references:ID"`
-	Reviewer *User     `gorm:"foreignKey:ReviewedBy;references:ID"`
-	Reports  []Report  `gorm:"foreignKey:DetectionID;references:ID"`
+	Image    Image    `gorm:"foreignKey:ImageID;references:ID"`
+	Reviewer *User    `gorm:"foreignKey:ReviewedBy;references:ID"`
+	Reports  []Report `gorm:"foreignKey:DetectionID;references:ID"`
 }
 
 func (Detection) TableName() string { return "detections" }
@@ -167,4 +170,3 @@ type PatientConsent struct {
 }
 
 func (PatientConsent) TableName() string { return "patient_consents" }
-
