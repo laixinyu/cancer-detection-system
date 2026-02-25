@@ -9,7 +9,8 @@
 
 ## 当前状态
 
-- 前后端：Next.js + tRPC + Prisma + PostgreSQL
+- 前端：Next.js（保留）
+- 后端：Go Gin（`backend-go`，已承接认证/上传/影像文件读取/健康检查）
 - AI 服务：FastAPI + ONNX Runtime
 - AI 任务：
   - A：肺炎风险
@@ -24,6 +25,31 @@
   - 默认 `RESEARCH_ONLY`（研究/辅助用途）
   - 支持高敏/高特双工作点
   - 已接入临床证据台账、治理门禁、运维事件管理
+
+## 后端架构（Gin 微服务）
+
+后端详细架构图与拆分策略见：
+
+- `backend-go/MICROSERVICES.md`
+
+简图如下：
+
+```mermaid
+flowchart LR
+  FE[Next.js Front端] --> GW[API Gateway cmd/server]
+  GW --> AUTH[Auth Upload Image]
+  GW --> DET[detection-service]
+  GW --> REP[report-service]
+  GW --> GOV[governance-service]
+  AUTH --> DB[(PostgreSQL)]
+  DET --> DB
+  REP --> DB
+  GOV --> DB
+  GOV --> CACHE[(Cache)]
+  AUTH --> AI[FastAPI AI Service]
+```
+
+约束：前端不允许直连 `ai-service`，必须由后端服务在服务端内网调用 AI。
 
 ## 系统架构
 
@@ -53,7 +79,7 @@ flowchart TB
 - 在线链路：患者上传 -> 后端编排 -> AI 推理 -> 医生审阅 -> 报告与 PDF 导出。
 - 离线链路：NIH 数据准备 -> 多任务训练 -> ONNX 导出 -> 发布到 `ai-service/models` -> 重建 AI 服务。
 - 前端：Next.js 覆盖患者、医生、管理员三类角色。
-- 后端：Next.js API + tRPC 负责业务流和治理能力；NextAuth 负责 RBAC。
+- 后端：Go Gin 负责核心业务接口；Next.js API 作为过渡兼容层（代理到 Gin）；NextAuth 使用 Gin 登录接口完成会话建立。
 - AI 服务：FastAPI 暴露 `/predict` 与 `/health`，输出多任务分数、候选区域与筛查摘要。
 - 数据与存储：PostgreSQL 保存核心业务与治理数据，Redis 用于缓存/扩展，影像保存在 `public/uploads`。
 
@@ -71,6 +97,8 @@ npm install
 docker compose up -d
 ```
 
+该命令会同时启动 `backend-go`（默认 `http://localhost:8080`）。
+
 ### 3. 初始化数据库
 
 ```bash
@@ -85,6 +113,12 @@ npm run dev
 ```
 
 访问地址：`http://localhost:3000`
+
+如需本地直接启动 Go 后端（不走 Docker）：
+
+```bash
+npm run dev:backend
+```
 
 ## 最低硬件标准（当前版本）
 

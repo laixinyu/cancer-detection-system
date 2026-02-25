@@ -43,6 +43,9 @@ function parsePositiveInt(value: string | undefined, fallback: number): number {
 }
 
 export async function requestAiDetection(file: File): Promise<AiDetectionResponse> {
+  if (typeof window !== 'undefined') {
+    throw new Error('Direct browser -> AI service calls are forbidden. Use backend API instead.')
+  }
   const aiServiceUrl = process.env.AI_SERVICE_URL || process.env.AI_MODEL_URL
 
   if (!aiServiceUrl) {

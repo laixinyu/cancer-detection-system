@@ -1,48 +1,43 @@
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
-import { readStoredFile } from '@/lib/storage'
+import { buildBackendApiUrl } from '@/lib/backend-api'
 
 export async function GET(
   _request: Request,
-  context: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   const session = await getServerSession(authOptions)
-  if (!session?.user) {
+  if (!session?.user?.accessToken) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const { id } = context.params
-  const image = await prisma.image.findUnique({
-    where: { id },
-    select: {
-      id: true,
-      filePath: true,
-      originalName: true,
-      uploadedBy: true,
+  const { id } = await context.params
+  const response = await fetch(
+    buildBackendApiUrl(`/api/v1/images/${id}/file`),
+    {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${session.user.accessToken}`,
+      },
+    }
+  )
+
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({ error: 'File unavailable' }))
+    return NextResponse.json(data, { status: response.status })
+  }
+
+  const blob = await response.arrayBuffer()
+  return new NextResponse(blob, {
+    status: 200,
+    headers: {
+      'Content-Type':
+        response.headers.get('content-type') || 'application/octet-stream',
+      'Cache-Control':
+        response.headers.get('cache-control') || 'private, max-age=60',
+      'Content-Disposition':
+        response.headers.get('content-disposition') || 'inline',
     },
   })
-  if (!image) {
-    return NextResponse.json({ error: 'Image not found' }, { status: 404 })
-  }
-
-  if (session.user.role === 'PATIENT' && image.uploadedBy !== session.user.id) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
-
-  try {
-    const blob = await readStoredFile(image.filePath)
-    return new NextResponse(blob.data, {
-      status: 200,
-      headers: {
-        'Content-Type': blob.contentType,
-        'Cache-Control': 'private, max-age=60',
-        'Content-Disposition': `inline; filename="${encodeURIComponent(image.originalName)}"`,
-      },
-    })
-  } catch (error) {
-    console.error('Read image file error:', error)
-    return NextResponse.json({ error: 'File unavailable' }, { status: 502 })
-  }
 }

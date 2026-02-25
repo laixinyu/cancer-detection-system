@@ -1,7 +1,6 @@
 import { NextAuthOptions } from 'next-auth'
 import CredentialsProvider from 'next-auth/providers/credentials'
-import { compare } from 'bcryptjs'
-import { prisma } from './prisma'
+import { buildBackendApiUrl } from './backend-api'
 
 const insecureNextAuthSecret =
   !process.env.NEXTAUTH_SECRET ||
@@ -32,30 +31,39 @@ export const authOptions: NextAuthOptions = {
           throw new Error('Invalid credentials')
         }
 
-        const user = await prisma.user.findUnique({
-          where: {
-            email: credentials.email,
+        const response = await fetch(buildBackendApiUrl('/api/v1/auth/login'), {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
           },
+          body: JSON.stringify({
+            email: credentials.email,
+            password: credentials.password,
+          }),
         })
-
-        if (!user) {
-          throw new Error('User not found')
+        if (!response.ok) {
+          throw new Error('Invalid credentials')
         }
 
-        const isPasswordValid = await compare(
-          credentials.password,
-          user.passwordHash
-        )
-
-        if (!isPasswordValid) {
-          throw new Error('Invalid password')
+        const data = (await response.json()) as {
+          token?: string
+          user?: {
+            id: string
+            email: string
+            name: string
+            role: string
+          }
+        }
+        if (!data.user || !data.token) {
+          throw new Error('Invalid login response')
         }
 
         return {
-          id: user.id,
-          email: user.email,
-          name: user.name,
-          role: user.role,
+          id: data.user.id,
+          email: data.user.email,
+          name: data.user.name,
+          role: data.user.role,
+          accessToken: data.token,
         }
       },
     }),
@@ -65,6 +73,7 @@ export const authOptions: NextAuthOptions = {
       if (user) {
         token.id = user.id
         token.role = user.role
+        token.accessToken = user.accessToken
       }
       return token
     },
@@ -72,6 +81,7 @@ export const authOptions: NextAuthOptions = {
       if (token && session.user) {
         session.user.id = token.id as string
         session.user.role = token.role as string
+        session.user.accessToken = token.accessToken as string
       }
       return session
     },

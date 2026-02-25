@@ -9,7 +9,8 @@ AI-assisted chest X-ray screening platform with role-based workflow for patient 
 
 ## Current Status
 
-- Frontend/Backend: Next.js + tRPC + Prisma + PostgreSQL
+- Frontend: Next.js (kept)
+- Backend: Go Gin (`backend-go`, now handles auth/upload/image file read/health)
 - AI Service: FastAPI + ONNX Runtime
 - AI tasks:
   - A: Pneumonia risk
@@ -24,6 +25,31 @@ AI-assisted chest X-ray screening platform with role-based workflow for patient 
   - Output marked `RESEARCH_ONLY` (non-clinical use)
   - High-sensitivity and high-specificity decision thresholds supported
   - Clinical evidence ledger + governance gate + ops incident management added (admin)
+
+## Backend Architecture (Gin Microservices)
+
+See full backend diagram and split strategy in:
+
+- `backend-go/MICROSERVICES.md`
+
+Quick view:
+
+```mermaid
+flowchart LR
+  FE[Next.js Frontend] --> GW[API Gateway cmd/server]
+  GW --> AUTH[Auth Upload Image]
+  GW --> DET[detection-service]
+  GW --> REP[report-service]
+  GW --> GOV[governance-service]
+  AUTH --> DB[(PostgreSQL)]
+  DET --> DB
+  REP --> DB
+  GOV --> DB
+  GOV --> CACHE[(Cache)]
+  AUTH --> AI[FastAPI AI Service]
+```
+
+Rule: frontend never calls `ai-service` directly; backend calls AI internally.
 
 ## System Architecture
 
@@ -97,7 +123,7 @@ flowchart TB
 - Online path: patient upload -> backend workflow -> AI inference -> doctor review -> report and PDF export.
 - Offline path: NIH dataset preparation -> multitask training -> ONNX export -> model release into `ai-service/models` -> AI service rebuild.
 - Frontend: Next.js pages cover patient, doctor, and admin roles.
-- Backend: Next.js API + tRPC manage workflow and governance; NextAuth enforces RBAC.
+- Backend: Go Gin serves core APIs; Next.js API acts as a transition compatibility layer (proxy to Gin); NextAuth login delegates to Gin.
 - AI service: FastAPI exposes `/predict` and `/health`, with multitask scores, region proposals, and screening summary output.
 - Data/storage: PostgreSQL stores business and governance data; Redis supports cache/scale; image files in `public/uploads`.
 
@@ -115,6 +141,8 @@ npm install
 docker compose up -d
 ```
 
+This also starts `backend-go` (default `http://localhost:8080`).
+
 ### 3. Setup database
 
 ```bash
@@ -129,6 +157,12 @@ npm run dev
 ```
 
 App URL: `http://localhost:3000`
+
+For local Go backend without Docker:
+
+```bash
+npm run dev:backend
+```
 
 ## Minimum Hardware Baseline (Current Version)
 

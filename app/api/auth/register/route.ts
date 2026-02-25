@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server'
-import { hash } from 'bcryptjs'
-import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
+import { buildBackendApiUrl } from '@/lib/backend-api'
 
 const registerSchema = z.object({
   name: z.string().min(1),
@@ -14,42 +13,17 @@ const registerSchema = z.object({
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    const { name, email, password, role, phone } = registerSchema.parse(body)
-
-    const existingUser = await prisma.user.findUnique({
-      where: { email },
+    const payload = registerSchema.parse(body)
+    const response = await fetch(buildBackendApiUrl('/api/v1/auth/register'), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
     })
 
-    if (existingUser) {
-      return NextResponse.json(
-        { error: 'User already exists' },
-        { status: 400 }
-      )
-    }
-
-    const passwordHash = await hash(password, 12)
-
-    const user = await prisma.user.create({
-      data: {
-        name,
-        email,
-        passwordHash,
-        role,
-        phone,
-      },
-    })
-
-    return NextResponse.json(
-      {
-        user: {
-          id: user.id,
-          email: user.email,
-          name: user.name,
-          role: user.role,
-        },
-      },
-      { status: 201 }
-    )
+    const data = await response.json().catch(() => ({ error: 'Upstream error' }))
+    return NextResponse.json(data, { status: response.status })
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(

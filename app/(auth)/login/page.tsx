@@ -1,7 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import { signIn } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
@@ -9,10 +8,12 @@ import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import LanguageSwitcher from '@/components/language-switcher'
 import { useI18n } from '@/components/i18n-provider'
+import { useAuth } from '@/components/auth-provider'
 
 export default function LoginPage() {
   const router = useRouter()
   const { t } = useI18n()
+  const { login } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -24,18 +25,9 @@ export default function LoginPage() {
     setIsLoading(true)
 
     try {
-      const result = await signIn('credentials', {
-        email,
-        password,
-        redirect: false,
-      })
-
-      if (result?.error) {
-        setError(t('auth.login.invalid'))
-      } else {
-        router.push('/dashboard')
-        router.refresh()
-      }
+      await login(email, password)
+      router.push('/dashboard')
+      router.refresh()
     } catch {
       setError(t('auth.login.error'))
     } finally {

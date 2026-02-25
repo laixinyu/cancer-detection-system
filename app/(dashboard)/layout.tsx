@@ -2,12 +2,12 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { signOut, useSession } from 'next-auth/react'
+import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import NotificationPanel from '@/components/notification-panel'
 import LanguageSwitcher from '@/components/language-switcher'
 import { useI18n } from '@/components/i18n-provider'
+import { useAuth } from '@/components/auth-provider'
 
 interface NavItem {
   labelKey: string
@@ -32,16 +32,18 @@ export default function DashboardLayout({
   children: React.ReactNode
 }) {
   const pathname = usePathname()
-  const { data: session } = useSession()
+  const router = useRouter()
+  const { user, logout } = useAuth()
   const { t } = useI18n()
-  const userRole = session?.user?.role || 'PATIENT'
+  const userRole = user?.role || 'PATIENT'
 
   const filteredNavItems = navItems.filter(item => 
     item.roles.includes(userRole)
   )
 
   const handleSignOut = async () => {
-    await signOut({ callbackUrl: '/login' })
+    logout()
+    router.push('/login')
   }
 
   return (
@@ -74,9 +76,8 @@ export default function DashboardLayout({
           
           <div className="flex items-center gap-4">
             <LanguageSwitcher compact />
-            <NotificationPanel />
             <div className="text-sm text-gray-600">
-              <span className="font-medium">{session?.user?.name}</span>
+              <span className="font-medium">{user?.name}</span>
               <span className="ml-2 text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">
                 {userRole}
               </span>

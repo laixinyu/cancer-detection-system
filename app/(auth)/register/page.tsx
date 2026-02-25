@@ -8,8 +8,9 @@ import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import LanguageSwitcher from '@/components/language-switcher'
 import { useI18n } from '@/components/i18n-provider'
+import { buildBackendApiUrl } from '@/lib/backend-api'
 
-type Role = 'ADMIN' | 'DOCTOR' | 'PATIENT'
+type Role = 'PATIENT'
 
 export default function RegisterPage() {
   const router = useRouter()
@@ -42,7 +43,7 @@ export default function RegisterPage() {
     setIsLoading(true)
 
     try {
-      const response = await fetch('/api/auth/register', {
+      const response = await fetch(buildBackendApiUrl('/api/v1/auth/register'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -141,7 +142,6 @@ export default function RegisterPage() {
                 className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
               >
                 <option value="PATIENT">{t('auth.register.patient')}</option>
-                <option value="DOCTOR">{t('auth.register.doctor')}</option>
               </select>
             </div>
 

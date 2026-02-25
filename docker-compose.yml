@@ -92,6 +92,28 @@ services:
       timeout: 5s
       retries: 5
 
+  backend-go:
+    build:
+      context: ./backend-go
+      dockerfile: Dockerfile
+    container_name: cancer-detection-backend-go
+    environment:
+      PORT: 8080
+      DATABASE_URL: ${DATABASE_URL:-postgresql://cancer_user:cancer_password@postgres:5432/cancer_detection}
+      AI_SERVICE_URL: ${AI_SERVICE_URL:-http://ai-service:8000}
+      BACKEND_JWT_SECRET: ${BACKEND_JWT_SECRET:-change-me-in-production}
+      UPLOAD_DIR: /app/public/uploads
+      UPLOAD_PUBLIC_PREFIX: /uploads
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - ./public/uploads:/app/public/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ai-service:
+        condition: service_healthy
+
 volumes:
   postgres_data:
   redis_data:
