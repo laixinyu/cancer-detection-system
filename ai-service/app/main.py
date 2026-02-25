@@ -73,6 +73,7 @@ class ModelRunner:
         self.enable_fp_reduction = os.getenv("AI_ENABLE_FP_REDUCTION", "true").lower() == "true"
         self.fp_min_lung_overlap = float(os.getenv("AI_FP_MIN_LUNG_OVERLAP", "0.20"))
         self.prefer_cuda_ep = os.getenv("AI_ORT_PREFER_CUDA", "true").lower() == "true"
+        self.prefer_dml_ep = os.getenv("AI_ORT_PREFER_DIRECTML", "true").lower() == "true"
         self.enable_io_binding = os.getenv("AI_ORT_ENABLE_IO_BINDING", "true").lower() == "true"
         self.ort_cuda_device_id = int(os.getenv("AI_ORT_CUDA_DEVICE_ID", "0"))
         self.ort_intra_threads = int(os.getenv("AI_ORT_INTRA_OP_THREADS", "1"))
@@ -167,6 +168,8 @@ class ModelRunner:
                     },
                 )
             )
+        if self.prefer_dml_ep and "DmlExecutionProvider" in self.ort_available_providers:
+            providers.append("DmlExecutionProvider")
         providers.append("CPUExecutionProvider")
         return providers
 
@@ -583,6 +586,34 @@ class ModelRunner:
             "pulmonaryEdemaLike": float(np.clip(0.35 * pneumonia + 0.35 * opacity + 0.30 * white_score, 0.0, 1.0)),
             "tbLikePattern": float(np.clip(0.50 * lesion + 0.30 * opacity + 0.20 * pneumonia, 0.0, 1.0)),
         }
+
+    @staticmethod
+    def apply_low_evidence_guard(
+        label_scores: Dict[str, float],
+        regions: List[Region],
+        white_lung_assessment: Dict[str, object],
+    ) -> Tuple[Dict[str, float], bool]:
+        # Guardrail for false positives on near-normal films:
+        # when no strong localization/white-lung evidence exists, damp lesion-heavy outputs.
+        max_region_conf = max((float(r.confidence) for r in regions), default=0.0)
+        white_score = float(np.clip(float(white_lung_assessment.get("whiteLungScore", 0.0)), 0.0, 1.0))
+        opacity_ratio = float(np.clip(float(white_lung_assessment.get("lungOpacityRatio", 0.0)), 0.0, 1.0))
+
+        has_strong_evidence = (
+            max_region_conf >= 0.35
+            or white_score >= 0.22
+            or opacity_ratio >= 0.18
+        )
+        if has_strong_evidence:
+            return label_scores, False
+
+        damping = 0.50 if (max_region_conf < 0.10 and white_score < 0.10 and opacity_ratio < 0.08) else 0.65
+        adjusted = dict(label_scores)
+        adjusted[LABEL_NODULE] = float(np.clip(adjusted.get(LABEL_NODULE, 0.0) * damping, 0.0, 1.0))
+        adjusted[LABEL_MASS] = float(np.clip(adjusted.get(LABEL_MASS, 0.0) * damping, 0.0, 1.0))
+        adjusted[LABEL_OPACITY] = float(np.clip(adjusted.get(LABEL_OPACITY, 0.0) * damping, 0.0, 1.0))
+        adjusted[LABEL_PNEUMONIA] = float(np.clip(adjusted.get(LABEL_PNEUMONIA, 0.0) * 0.85, 0.0, 1.0))
+        return adjusted, True
 
     @staticmethod
     def _safe_logit(prob: float) -> float:
@@ -1012,6 +1043,7 @@ def health():
         "modelActiveProviders": runner.model_active_providers,
         "detectorActiveProviders": runner.detector_active_providers,
         "ortPreferCuda": runner.prefer_cuda_ep,
+        "ortPreferDirectML": runner.prefer_dml_ep,
         "ortEnableIOBinding": runner.enable_io_binding,
         "ortCudaDeviceId": runner.ort_cuda_device_id,
         "ortGraphOptimization": runner.ort_graph_optimization,
@@ -1060,6 +1092,13 @@ async def predict(file: UploadFile = File(...)):
         for label in TASK_LABELS
     }
 
+    white_lung_assessment = runner.assess_white_lung(image_original, merged_scores[LABEL_OPACITY])
+    merged_scores, low_evidence_mode = runner.apply_low_evidence_guard(
+        merged_scores, regions, white_lung_assessment
+    )
+    # Recompute white-lung summary with adjusted opacity score so downstream summary stays consistent.
+    white_lung_assessment = runner.assess_white_lung(image_original, merged_scores[LABEL_OPACITY])
+
     # Keep backward-compatible aggregate probability for the existing system:
     # cancerProbability reflects lesion-like risk (Nodule/Mass/Opacity), not pneumonia.
     cancer_probability = max(
@@ -1068,19 +1107,24 @@ async def predict(file: UploadFile = File(...)):
         merged_scores[LABEL_OPACITY],
     )
 
+    # Keep "top findings" conservative to reduce healthy-film over-calling.
+    top_findings_threshold = 0.5
     top_findings = [
         label
         for label, score in sorted(merged_scores.items(), key=lambda item: item[1], reverse=True)
-        if score >= 0.2
+        if score > top_findings_threshold
     ][:3]
-    white_lung_assessment = runner.assess_white_lung(image_original, merged_scores[LABEL_OPACITY])
     infection_coverage = runner.build_infection_coverage(merged_scores, white_lung_assessment)
-    infection_top = [
-        key
-        for key, score in sorted(infection_coverage.items(), key=lambda item: item[1], reverse=True)
-        if score >= 0.35
-    ][:2]
-    top_findings = top_findings + infection_top
+    infection_top: List[str] = []
+    # Do not expose infection-derived findings when there is no localized evidence.
+    if regions:
+        infection_top_threshold = 0.45 if low_evidence_mode else 0.35
+        infection_top = [
+            key
+            for key, score in sorted(infection_coverage.items(), key=lambda item: item[1], reverse=True)
+            if score >= infection_top_threshold
+        ][:2]
+        top_findings = top_findings + infection_top
 
     pneumonia_probability = merged_scores[LABEL_PNEUMONIA]
     lesion_hs = runner.task_thresholds[TASK_LESION]["high_sensitivity_threshold"]

@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import Link from 'next/link'
-import { formatDate } from '@/lib/utils'
+import { formatTime } from '@/lib/utils'
 import { api } from '@/lib/trpc'
 import { useI18n } from '@/components/i18n-provider'
 
@@ -160,7 +160,7 @@ export default function DoctorQueuePage() {
                             {detection.image.originalName}
                           </p>
                           <p className="text-xs text-gray-500 mt-1">
-                            {isZh ? '上传时间：' : 'Uploaded: '}{formatDate(detection.image.createdAt)}
+                            {isZh ? '上传时间：' : 'Uploaded: '}{formatTime(detection.image.createdAt)}
                           </p>
                         </div>
                         

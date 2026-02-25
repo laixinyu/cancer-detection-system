@@ -1,0 +1,10 @@
+[env] torch.cuda.is_available=True
+[env] torch_version=2.10.0+cu126, cuda_version=12.6
+[env] cuda.current_device=0
+[env] cuda.device_name=NVIDIA GeForce RTX 4070
+[env] cudnn.enabled=True
+[info] Loaded samples=112120, unique_patients=30805, val_ratio=0.15
+[env] device=cuda, num_workers=16, batch_size=32, amp=True, prefetch_factor=4
+[info] Distillation enabled. teacher_backbone=densenet121, teacher_dropout=0.0, teacher_ckpt=E:\newTestProject\cancer-detection-system\ai-service\models\nih_multitask_best.pt
+[info] backbone=densenet121, image_size=224, train=95106, val=17014, batch_size=32, lr_scheduler=plateau
+{"val_loss": 0.528644866355931, "val_auc_Pneumonia": 0.6684229543009896, "val_auc_Nodule": 0.7504251449620264, "val_auc_Mass": 0.8084051851719521, "val_auc_Lung Opacity": 0.7432867074416476, "val_mean_auc": 0.742634997969154, "epoch": 1.0, "train_loss": 0.7478189751083757, "train_sup_loss": 0.24807352272089886, "epoch_seconds": 659.5735098999576, "samples_per_sec": 144.1931772160247, "train_kd_loss": 2.746800692849106, "lr": 5e-05}

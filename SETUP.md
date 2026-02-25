@@ -50,6 +50,54 @@ The `.env` file is already configured with default values:
 openssl rand -base64 32
 ```
 
+### Optional: Storage Backend Switch (Local / MinIO / S3)
+
+Default local mode now uses local object storage (MinIO, S3-compatible):
+
+```env
+STORAGE_PROVIDER=local
+STORAGE_ENV=dev
+STORAGE_ENV_IN_PREFIX=true
+S3_ENDPOINT=http://127.0.0.1:9000
+S3_REGION=us-east-1
+S3_BUCKET=cancer-images-local
+S3_ACCESS_KEY_ID=minioadmin
+S3_SECRET_ACCESS_KEY=minioadmin
+S3_FORCE_PATH_STYLE=true
+S3_PREFIX=uploads
+```
+
+Environment isolation options:
+
+```env
+S3_BUCKET_DEV=cancer-images-dev
+S3_BUCKET_TEST=cancer-images-test
+S3_BUCKET_PROD=cancer-images-prod
+S3_PREFIX_DEV=uploads
+S3_PREFIX_TEST=uploads
+S3_PREFIX_PROD=uploads
+```
+
+Switch to MinIO / S3:
+
+```env
+STORAGE_PROVIDER=s3
+S3_ENDPOINT=http://127.0.0.1:9000
+S3_REGION=us-east-1
+S3_BUCKET=cancer-images
+S3_ACCESS_KEY_ID=minioadmin
+S3_SECRET_ACCESS_KEY=minioadmin
+S3_FORCE_PATH_STYLE=true
+S3_PREFIX=uploads
+```
+
+Notes:
+- Leave `S3_ENDPOINT` empty to use AWS S3 default endpoint.
+- MinIO usually needs `S3_FORCE_PATH_STYLE=true`.
+- The app stores `file_path` as `s3://bucket/key` and serves it via a controlled API route.
+- To force legacy disk storage, set:
+  `STORAGE_PROVIDER=fs`, `LOCAL_UPLOAD_DIR=./public/uploads`, `LOCAL_UPLOAD_PUBLIC_PREFIX=/uploads`
+
 ### 5. Run Development Server
 ```bash
 npm run dev

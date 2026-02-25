@@ -1,7 +1,4 @@
 import { NextResponse } from 'next/server'
-import { mkdir, writeFile } from 'fs/promises'
-import { join } from 'path'
-import { randomUUID } from 'crypto'
 import { getServerSession } from 'next-auth'
 import { Prisma, type FileType } from '@prisma/client'
 import { authOptions } from '@/lib/auth'
@@ -10,6 +7,7 @@ import { CLINICAL_SCOPE } from '@/server/compliance/workflow'
 import { writeAuditLog } from '@/server/compliance/audit'
 import { requestAiDetection } from '@/lib/ai-service'
 import { buildScreeningSummary } from '@/lib/screening'
+import { buildImageAccessUrl, saveUploadedFile } from '@/lib/storage'
 
 export async function POST(request: Request) {
   try {
@@ -104,24 +102,14 @@ export async function POST(request: Request) {
       })
     }
 
-    // Save file
+    // Save file to configured storage provider (local/s3-compatible).
     const bytes = await file.arrayBuffer()
     const buffer = Buffer.from(bytes)
-    
-    // Create uploads directory if it doesn't exist
-    const uploadsDir = join(process.cwd(), 'public', 'uploads')
-    const rawExt = file.name.split('.').pop()?.toLowerCase() || ''
-    const allowedExtensions = new Set(['png', 'jpg', 'jpeg', 'tiff', 'dcm'])
-    const normalizedExt = allowedExtensions.has(rawExt)
-      ? rawExt
-      : file.type === 'application/dicom'
-      ? 'dcm'
-      : 'jpg'
-    const fileName = `${Date.now()}_${randomUUID()}.${normalizedExt}`
-    const filePath = join(uploadsDir, fileName)
-
-    await mkdir(uploadsDir, { recursive: true })
-    await writeFile(filePath, buffer)
+    const storedFilePath = await saveUploadedFile({
+      buffer,
+      originalName: file.name,
+      contentType: file.type,
+    })
 
     // Get file extension
     const fileExtension = file.name.split('.').pop()?.toUpperCase() || 'JPEG'
@@ -139,7 +127,7 @@ export async function POST(request: Request) {
     const image = await prisma.image.create({
       data: {
         patientId: patient.id,
-        filePath: `/uploads/${fileName}`,
+        filePath: storedFilePath,
         fileType: fileType,
         originalName: file.name,
         fileSize: file.size,
@@ -245,7 +233,10 @@ export async function POST(request: Request) {
           image: {
             id: latestImage?.id ?? image.id,
             originalName: latestImage?.originalName ?? image.originalName,
-            filePath: latestImage?.filePath ?? image.filePath,
+            filePath: buildImageAccessUrl(
+              latestImage?.id ?? image.id,
+              latestImage?.filePath ?? image.filePath
+            ),
             status: latestImage?.status ?? image.status,
           },
         },
@@ -271,7 +262,10 @@ export async function POST(request: Request) {
       image: {
         id: latestImage?.id ?? image.id,
         originalName: latestImage?.originalName ?? image.originalName,
-        filePath: latestImage?.filePath ?? image.filePath,
+        filePath: buildImageAccessUrl(
+          latestImage?.id ?? image.id,
+          latestImage?.filePath ?? image.filePath
+        ),
         status: latestImage?.status ?? image.status,
       },
     })

@@ -12,9 +12,7 @@ from typing import Dict, Iterable, List, Sequence, Tuple, Optional
 import numpy as np
 import torch
 from PIL import Image
-from sklearn.metrics import roc_auc_score
 from torch import nn
-from torch.cuda.amp import GradScaler, autocast
 from torch.utils.data import DataLoader, Dataset, WeightedRandomSampler
 from torchvision import models, transforms
 from tqdm import tqdm
@@ -41,6 +39,18 @@ OPACITY_PROXY_LABELS = {
     "Effusion",
     "Pneumonia",
 }
+
+
+def build_grad_scaler(device_type: str, enabled: bool):
+    if not (hasattr(torch, "amp") and hasattr(torch.amp, "GradScaler")):
+        raise RuntimeError("Current PyTorch version does not support torch.amp.GradScaler")
+    return torch.amp.GradScaler(device_type, enabled=enabled)
+
+
+def amp_autocast(device_type: str, enabled: bool):
+    if not (hasattr(torch, "amp") and hasattr(torch.amp, "autocast")):
+        raise RuntimeError("Current PyTorch version does not support torch.amp.autocast")
+    return torch.amp.autocast(device_type=device_type, enabled=enabled)
 
 
 @dataclass
@@ -414,6 +424,8 @@ def validate_args(args: argparse.Namespace) -> None:
         raise ValueError("--lr-factor must be in (0,1)")
     if args.lr_min < 0.0:
         raise ValueError("--lr-min must be >= 0")
+    if args.batch_size_scale < 1.0:
+        raise ValueError("--batch-size-scale must be >= 1.0")
     parse_class_loss_weights(args.class_loss_weights)
 
 
@@ -509,9 +521,24 @@ def set_seed(seed: int) -> None:
 def resolve_num_workers(requested: int) -> int:
     if requested >= 0:
         return requested
-    cpu_count = os.cpu_count() or 8
-    # Auto-tune for loader throughput while keeping CPU headroom for the OS.
-    return max(4, min(16, int(cpu_count * 0.7)))
+    # Auto mode: use all logical CPU cores for max data loading throughput.
+    return os.cpu_count() or 8
+
+
+def unwrap_model(model: nn.Module) -> nn.Module:
+    if isinstance(model, nn.DataParallel):
+        return model.module
+    return model
+
+
+def maybe_wrap_data_parallel(model: nn.Module, device: torch.device, enable: bool) -> nn.Module:
+    if not enable or device.type != "cuda":
+        return model
+    gpu_count = torch.cuda.device_count()
+    if gpu_count <= 1:
+        return model
+    print(f"[info] Enabling DataParallel on {gpu_count} GPUs")
+    return nn.DataParallel(model)
 
 
 def print_cuda_diagnostics() -> None:
@@ -639,6 +666,105 @@ def save_summary(output_dir: Path, summary: Dict[str, object]) -> None:
     )
 
 
+def _get_metric(row: Dict[str, object], *keys: str, default: float = float("nan")) -> float:
+    for key in keys:
+        value = row.get(key)
+        if value is not None:
+            try:
+                return float(value)
+            except (TypeError, ValueError):
+                return default
+    return default
+
+
+def build_training_report_markdown(summary: Dict[str, object]) -> str:
+    history_raw = summary.get("history")
+    history: List[Dict[str, object]] = history_raw if isinstance(history_raw, list) else []
+    best_auc = float(summary.get("best_mean_auc", 0.0))
+    best_epoch = int(float(summary.get("best_epoch", 0)))
+    train_size = int(summary.get("train_size", 0))
+    val_size = int(summary.get("val_size", 0))
+    test_size = int(summary.get("test_size", 0))
+    split_mode = str(summary.get("split_mode", "unknown"))
+    best_checkpoint = str(summary.get("best_checkpoint", ""))
+    last_checkpoint = str(summary.get("last_checkpoint", ""))
+
+    final_train_loss = float("nan")
+    final_val_auc = float("nan")
+    overfit = False
+    trend_note = "历史不足，无法判断趋势。"
+
+    if history:
+        last = history[-1]
+        final_train_loss = _get_metric(last, "train_loss")
+        final_val_auc = _get_metric(last, "val_mean_auc", "mean_auc")
+        auc_series = [_get_metric(item, "val_mean_auc", "mean_auc") for item in history]
+        if len(auc_series) >= 3 and auc_series[-1] < auc_series[-2] < auc_series[-3]:
+            overfit = True
+            trend_note = "验证AUC连续下降（最近3个epoch），存在明显过拟合风险。"
+        elif final_val_auc < best_auc:
+            trend_note = "验证AUC低于历史最佳，建议优先使用best checkpoint。"
+        else:
+            trend_note = "验证AUC稳定或改善。"
+
+    class_items = [
+        ("Pneumonia", "val_auc_Pneumonia", "auc_Pneumonia"),
+        ("Nodule", "val_auc_Nodule", "auc_Nodule"),
+        ("Mass", "val_auc_Mass", "auc_Mass"),
+        ("Lung Opacity", "val_auc_Lung Opacity", "auc_Lung Opacity"),
+    ]
+    class_lines: List[str] = []
+    for label, key1, key2 in class_items:
+        values = [_get_metric(item, key1, key2) for item in history]
+        values = [v for v in values if not np.isnan(v)]
+        if values:
+            class_lines.append(
+                f"- {label}: best AUC={max(values):.4f}, final AUC={values[-1]:.4f}"
+            )
+        else:
+            class_lines.append(f"- {label}: 无可用AUC")
+
+    release_decision = "建议继续验证"
+    if best_auc >= 0.75 and not overfit:
+        release_decision = "可进入下一阶段验证（需结合阈值与混淆矩阵）"
+    if overfit:
+        release_decision = "暂不建议升级上线，优先处理过拟合"
+
+    lines = [
+        "# NIH 多任务训练报告",
+        "",
+        "## 1) 训练概览",
+        f"- 数据划分: split_mode={split_mode}, train={train_size}, val={val_size}, test={test_size}",
+        f"- 最佳轮次: epoch {best_epoch}",
+        f"- 最佳验证AUC(mean): {best_auc:.4f}",
+        f"- 末轮训练loss: {final_train_loss:.4f}" if not np.isnan(final_train_loss) else "- 末轮训练loss: N/A",
+        f"- 末轮验证AUC(mean): {final_val_auc:.4f}" if not np.isnan(final_val_auc) else "- 末轮验证AUC(mean): N/A",
+        "",
+        "## 2) 趋势判断",
+        f"- 结论: {trend_note}",
+        "",
+        "## 3) 各任务AUC",
+        *class_lines,
+        "",
+        "## 4) 模型产物",
+        f"- 推荐用于推理: `{best_checkpoint}`",
+        f"- 最后一轮checkpoint: `{last_checkpoint}`",
+        "",
+        "## 5) 发布建议",
+        f"- 结论: {release_decision}",
+        "- 下一步: 结合 `evaluate_predictions.py` 生成阈值下的敏感度/特异度与混淆矩阵后再定版。",
+        "",
+    ]
+    return "\n".join(lines)
+
+
+def save_training_report(output_dir: Path, summary: Dict[str, object]) -> Path:
+    report_text = build_training_report_markdown(summary)
+    report_path = output_dir / "nih_training_report.md"
+    report_path.write_text(report_text, encoding="utf-8")
+    return report_path
+
+
 def build_data_loaders(
     train_samples: Sequence[Sample],
     val_samples: Sequence[Sample],
@@ -758,8 +884,9 @@ def csv_sanity_check(csv_path: Path, min_csv_rows: int, allow_small_csv: bool) -
 
 
 def checkpoint_payload(model: nn.Module, args: argparse.Namespace, metrics: Dict[str, float]) -> Dict[str, object]:
+    base_model = unwrap_model(model)
     payload = {
-        "state_dict": model.state_dict(),
+        "state_dict": base_model.state_dict(),
         "class_names": CLASS_NAMES,
         "image_size": args.image_size,
         "backbone": args.backbone,
@@ -782,7 +909,7 @@ def build_lr_scheduler(
         return torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=max(args.epochs, 1), eta_min=args.lr_min)
     return torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer,
-        mode="min",
+        mode="max",
         factor=args.lr_factor,
         patience=args.lr_patience,
         min_lr=args.lr_min,
@@ -811,6 +938,7 @@ def train_loop(
     epoch_dir: Path,
     train_samples: Sequence[Sample],
 ) -> Tuple[float, int, List[Dict[str, float]]]:
+    torch.autograd.set_detect_anomaly(False)
     pos_weight = compute_pos_weight(train_samples).to(device)
     class_weights = torch.tensor(parse_class_loss_weights(args.class_loss_weights), dtype=torch.float32).to(device)
     if args.loss_type == "focal":
@@ -824,7 +952,8 @@ def train_loop(
         criterion = BCEWithLogitsWeightedLoss(pos_weight=pos_weight, class_weights=class_weights)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     scheduler = build_lr_scheduler(optimizer, args)
-    scaler = GradScaler(enabled=(args.amp and device.type == "cuda"))
+    amp_enabled = bool(args.amp and device.type == "cuda")
+    scaler = build_grad_scaler(device_type=device.type, enabled=amp_enabled)
 
     best_auc = -1.0
     best_auc_for_patience = -1.0
@@ -848,7 +977,7 @@ def train_loop(
             x = x.to(device, non_blocking=True)
             y = y.to(device, non_blocking=True)
             optimizer.zero_grad(set_to_none=True)
-            with autocast(enabled=(args.amp and device.type == "cuda")):
+            with amp_autocast(device_type=device.type, enabled=amp_enabled):
                 student_logits = model(x)
                 total_loss, sup_loss_value, kd_loss_value = train_step_loss(
                     student_logits=student_logits,
@@ -892,7 +1021,7 @@ def train_loop(
         val_auc = float(metrics["val_mean_auc"])
         val_loss = float(metrics["val_loss"])
         if isinstance(scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
-            scheduler.step(val_loss)
+            scheduler.step(val_auc)
         elif scheduler is not None:
             scheduler.step()
         metrics["lr"] = float(optimizer.param_groups[0]["lr"])
@@ -946,6 +1075,39 @@ def compute_pos_weight(samples: Sequence[Sample]) -> torch.Tensor:
     return torch.tensor(w, dtype=torch.float32)
 
 
+def binary_roc_auc_score(y_true: np.ndarray, y_score: np.ndarray) -> float:
+    """Compute ROC AUC for binary labels without sklearn/scipy dependency."""
+    y_true = np.asarray(y_true, dtype=np.int64)
+    y_score = np.asarray(y_score, dtype=np.float64)
+    pos = y_true == 1
+    neg = y_true == 0
+    n_pos = int(pos.sum())
+    n_neg = int(neg.sum())
+    if n_pos == 0 or n_neg == 0:
+        raise ValueError("ROC AUC is undefined when only one class is present.")
+
+    order = np.argsort(y_score, kind="mergesort")
+    sorted_scores = y_score[order]
+    ranks = np.empty_like(sorted_scores, dtype=np.float64)
+
+    # Assign average ranks for ties (1-based ranks).
+    i = 0
+    n = sorted_scores.shape[0]
+    while i < n:
+        j = i + 1
+        while j < n and sorted_scores[j] == sorted_scores[i]:
+            j += 1
+        avg_rank = 0.5 * (i + j - 1) + 1.0
+        ranks[i:j] = avg_rank
+        i = j
+
+    ranks_original = np.empty_like(ranks)
+    ranks_original[order] = ranks
+    sum_pos_ranks = float(ranks_original[pos].sum())
+    auc = (sum_pos_ranks - (n_pos * (n_pos + 1) / 2.0)) / (n_pos * n_neg)
+    return float(auc)
+
+
 def evaluate(model: nn.Module, loader: DataLoader, device: torch.device, prefix: str = "val") -> Dict[str, float]:
     model.eval()
     ys: List[np.ndarray] = []
@@ -970,7 +1132,7 @@ def evaluate(model: nn.Module, loader: DataLoader, device: torch.device, prefix:
     aucs: List[float] = []
     for i, name in enumerate(CLASS_NAMES):
         try:
-            auc = float(roc_auc_score(y_true[:, i], y_prob[:, i]))
+            auc = binary_roc_auc_score(y_true[:, i], y_prob[:, i])
         except ValueError:
             auc = float("nan")
         metrics[f"{prefix}_auc_{name}"] = auc
@@ -1004,13 +1166,27 @@ def train(args: argparse.Namespace) -> None:
 
     device = choose_device(args.cpu)
     configure_torch_backend(device)
-    pin_memory = device.type == "cuda"
+    pin_memory = bool(args.pin_memory and device.type == "cuda")
     num_workers = resolve_num_workers(args.num_workers)
+    effective_batch_size = args.batch_size
+    effective_lr = args.lr
+    if args.auto_scale_batch_lr:
+        scale = max(float(args.batch_size_scale), 1.0)
+        effective_batch_size = max(1, int(round(args.batch_size * scale)))
+        effective_lr = args.lr * scale
+        print(
+            f"[info] Auto scale enabled: batch_size {args.batch_size} -> {effective_batch_size}, "
+            f"lr {args.lr:.6g} -> {effective_lr:.6g}"
+        )
+    args.batch_size = effective_batch_size
+    args.lr = effective_lr
     if device.type == "cuda" and args.cudnn_benchmark:
         torch.backends.cudnn.benchmark = True
+    gpu_count = torch.cuda.device_count() if device.type == "cuda" else 0
     print(
         f"[env] device={device.type}, num_workers={num_workers}, "
-        f"batch_size={args.batch_size}, amp={args.amp}, prefetch_factor={args.prefetch_factor}"
+        f"batch_size={args.batch_size}, amp={args.amp}, prefetch_factor={args.prefetch_factor}, "
+        f"pin_memory={pin_memory}, gpus={gpu_count}"
     )
 
     train_loader, val_loader = build_data_loaders(
@@ -1028,6 +1204,7 @@ def train(args: argparse.Namespace) -> None:
         prefetch_factor=args.prefetch_factor,
     )
     model = build_model(args.backbone, dropout=args.dropout).to(device)
+    model = maybe_wrap_data_parallel(model, device=device, enable=args.data_parallel)
     teacher_model = create_teacher_model(args, device=device)
     training_banner(args, train_size=len(train_samples), val_size=len(val_samples))
 
@@ -1080,8 +1257,10 @@ def train(args: argparse.Namespace) -> None:
         "history": history,
     }
     save_summary(output_dir, summary)
+    report_path = save_training_report(output_dir, summary)
     print(f"Training done. Best mean AUC={best_auc:.4f}")
     print(f"Best checkpoint: {best_path}")
+    print(f"Training report: {report_path}")
 
 
 def build_argparser() -> argparse.ArgumentParser:
@@ -1123,9 +1302,20 @@ def build_argparser() -> argparse.ArgumentParser:
     p.add_argument("--amp", action="store_true", help="Enable mixed precision training on CUDA")
     p.add_argument("--grad-clip", type=float, default=1.0, help="Global grad norm clipping; <=0 disables")
     p.add_argument("--early-stop-patience", type=int, default=2, help="Stop if val_mean_auc plateaus (0 disables)")
-    p.add_argument("--early-stop-min-delta", type=float, default=0.001, help="Min AUC improvement to reset early stop")
+    p.add_argument("--early-stop-min-delta", type=float, default=0.0, help="Min AUC improvement to reset early stop")
     p.add_argument("--image-size", type=int, default=224)
     p.add_argument("--batch-size", type=int, default=32)
+    p.add_argument(
+        "--auto-scale-batch-lr",
+        action="store_true",
+        help="Scale batch size and learning rate together for higher throughput.",
+    )
+    p.add_argument(
+        "--batch-size-scale",
+        type=float,
+        default=2.0,
+        help="Scale factor used when --auto-scale-batch-lr is enabled.",
+    )
     p.add_argument("--epochs", type=int, default=8)
     p.add_argument("--lr", type=float, default=1e-4)
     p.add_argument("--lr-scheduler", choices=LR_SCHEDULER_CHOICES, default="plateau")
@@ -1134,8 +1324,26 @@ def build_argparser() -> argparse.ArgumentParser:
     p.add_argument("--lr-min", type=float, default=1e-6, help="Minimum LR for schedulers")
     p.add_argument("--weight-decay", type=float, default=1e-4)
     p.add_argument("--val-ratio", type=float, default=0.15)
-    p.add_argument("--num-workers", type=int, default=-1, help="-1 means auto-tune (up to 16)")
+    p.add_argument("--num-workers", type=int, default=-1, help="-1 means auto-set to CPU core count")
+    p.add_argument(
+        "--pin-memory",
+        dest="pin_memory",
+        action="store_true",
+        default=True,
+        help="Pin host memory for faster H2D transfer on CUDA.",
+    )
+    p.add_argument(
+        "--no-pin-memory",
+        dest="pin_memory",
+        action="store_false",
+        help="Disable pinned memory in DataLoader.",
+    )
     p.add_argument("--prefetch-factor", type=int, default=4)
+    p.add_argument(
+        "--data-parallel",
+        action="store_true",
+        help="Enable nn.DataParallel when multiple CUDA GPUs are available.",
+    )
     p.add_argument(
         "--cudnn-benchmark",
         dest="cudnn_benchmark",

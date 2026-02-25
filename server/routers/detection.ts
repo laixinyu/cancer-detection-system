@@ -4,6 +4,7 @@ import { TRPCError } from '@trpc/server'
 import { Prisma } from '@prisma/client'
 import { assertDetectionTransition } from '@/server/compliance/workflow'
 import { writeAuditLog } from '@/server/compliance/audit'
+import { buildImageAccessUrl } from '@/lib/storage'
 
 export const detectionRouter = createTRPCRouter({
   list: protectedProcedure
@@ -71,7 +72,13 @@ export const detectionRouter = createTRPCRouter({
       }
 
       return {
-        detections,
+        detections: detections.map((detection) => ({
+          ...detection,
+          image: {
+            ...detection.image,
+            filePath: buildImageAccessUrl(detection.image.id, detection.image.filePath),
+          },
+        })),
         nextCursor,
       }
     }),
@@ -116,7 +123,13 @@ export const detectionRouter = createTRPCRouter({
         throw new TRPCError({ code: 'FORBIDDEN', message: 'Unauthorized' })
       }
 
-      return detection
+      return {
+        ...detection,
+        image: {
+          ...detection.image,
+          filePath: buildImageAccessUrl(detection.image.id, detection.image.filePath),
+        },
+      }
     }),
 
   review: protectedProcedure

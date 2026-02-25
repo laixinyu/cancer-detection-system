@@ -30,6 +30,19 @@ services:
       timeout: 5s
       retries: 5
 
+  minio:
+    image: minio/minio:latest
+    container_name: cancer-detection-minio
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY_ID:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_ACCESS_KEY:-minioadmin}
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+
   ai-service:
     build:
       context: ./ai-service
@@ -43,7 +56,7 @@ services:
       AI_MODEL_VERSION: ${AI_MODEL_VERSION:-cxr-multitask-v1}
       AI_INPUT_SIZE: ${AI_INPUT_SIZE:-224}
       AI_CALIBRATION_TEMPERATURE: ${AI_CALIBRATION_TEMPERATURE:-1.6}
-      AI_THRESHOLD_HIGH_SENS: ${AI_THRESHOLD_HIGH_SENS:-0.30}
+      AI_THRESHOLD_HIGH_SENS: ${AI_THRESHOLD_HIGH_SENS:-0.55}
       AI_THRESHOLD_HIGH_SPEC: ${AI_THRESHOLD_HIGH_SPEC:-0.70}
       AI_CLINICAL_CONFIG_PATH: ${AI_CLINICAL_CONFIG_PATH:-/app/models/clinical_config.json}
       AI_CLINICAL_GOVERNANCE_PATH: ${AI_CLINICAL_GOVERNANCE_PATH:-/app/models/clinical_governance.json}
@@ -59,7 +72,7 @@ services:
       AI_DETECTOR_CONF_THRESHOLD: ${AI_DETECTOR_CONF_THRESHOLD:-0.25}
       AI_DETECTOR_IOU_THRESHOLD: ${AI_DETECTOR_IOU_THRESHOLD:-0.45}
       AI_ENFORCE_DETECTOR_STARTUP_CHECK: ${AI_ENFORCE_DETECTOR_STARTUP_CHECK:-true}
-      AI_ENABLE_HEURISTIC_REGIONS: ${AI_ENABLE_HEURISTIC_REGIONS:-true}
+      AI_ENABLE_HEURISTIC_REGIONS: ${AI_ENABLE_HEURISTIC_REGIONS:-false}
       AI_ENABLE_TTA: ${AI_ENABLE_TTA:-true}
       AI_ENABLE_FP_REDUCTION: ${AI_ENABLE_FP_REDUCTION:-true}
       AI_FP_MIN_LUNG_OVERLAP: ${AI_FP_MIN_LUNG_OVERLAP:-0.20}
@@ -82,3 +95,4 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  minio_data:

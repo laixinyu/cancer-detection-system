@@ -50,6 +50,54 @@ npx prisma migrate dev --name init
 openssl rand -base64 32
 ```
 
+### 可选：上传存储切换（本地 / MinIO / S3）
+
+默认 local 模式为本地对象存储（MinIO，S3 兼容）：
+
+```env
+STORAGE_PROVIDER=local
+STORAGE_ENV=dev
+STORAGE_ENV_IN_PREFIX=true
+S3_ENDPOINT=http://127.0.0.1:9000
+S3_REGION=us-east-1
+S3_BUCKET=cancer-images-local
+S3_ACCESS_KEY_ID=minioadmin
+S3_SECRET_ACCESS_KEY=minioadmin
+S3_FORCE_PATH_STYLE=true
+S3_PREFIX=uploads
+```
+
+环境隔离可选配置：
+
+```env
+S3_BUCKET_DEV=cancer-images-dev
+S3_BUCKET_TEST=cancer-images-test
+S3_BUCKET_PROD=cancer-images-prod
+S3_PREFIX_DEV=uploads
+S3_PREFIX_TEST=uploads
+S3_PREFIX_PROD=uploads
+```
+
+切换到 MinIO / S3：
+
+```env
+STORAGE_PROVIDER=s3
+S3_ENDPOINT=http://127.0.0.1:9000
+S3_REGION=us-east-1
+S3_BUCKET=cancer-images
+S3_ACCESS_KEY_ID=minioadmin
+S3_SECRET_ACCESS_KEY=minioadmin
+S3_FORCE_PATH_STYLE=true
+S3_PREFIX=uploads
+```
+
+说明：
+- `S3_ENDPOINT` 留空时即使用 AWS S3 官方端点。
+- MinIO 通常需要 `S3_FORCE_PATH_STYLE=true`。
+- 系统会把数据库中的 `file_path` 存成 `s3://bucket/key`，并通过受控接口返回可访问地址。
+- 如需强制回退到磁盘存储，可设置：
+  `STORAGE_PROVIDER=fs`、`LOCAL_UPLOAD_DIR=./public/uploads`、`LOCAL_UPLOAD_PUBLIC_PREFIX=/uploads`。
+
 ### 5. 启动开发服务
 
 ```bash

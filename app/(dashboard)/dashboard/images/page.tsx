@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import Link from 'next/link'
@@ -23,6 +24,12 @@ export default function ImagesPage() {
   )
 
   const images = data?.images ?? []
+  const [previewLoadFailed, setPreviewLoadFailed] = useState<Record<string, boolean>>({})
+  const [previewImage, setPreviewImage] = useState<{
+    filePath: string
+    originalName: string
+    fileType: string
+  } | null>(null)
   const completed = images.filter((image) => image.status === 'COMPLETED').length
   const processing = images.filter((image) => image.status === 'PROCESSING').length
   const failed = images.filter((image) => image.status === 'FAILED').length
@@ -44,6 +51,19 @@ export default function ImagesPage() {
     if (probability < 0.3) return { text: isZh ? '低' : 'Low', color: 'text-green-600' }
     if (probability < 0.7) return { text: isZh ? '中' : 'Medium', color: 'text-yellow-600' }
     return { text: isZh ? '高' : 'High', color: 'text-red-600' }
+  }
+
+  const canInlinePreview = (fileType: string, imageId: string) => {
+    if (previewLoadFailed[imageId]) return false
+    return fileType !== 'DICOM'
+  }
+
+  const openPreview = (image: { filePath: string; originalName: string; fileType: string }) => {
+    setPreviewImage(image)
+  }
+
+  const closePreview = () => {
+    setPreviewImage(null)
   }
 
   return (
@@ -120,8 +140,24 @@ export default function ImagesPage() {
                     key={image.id}
                     className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
                   >
-                    <div className="w-20 h-20 bg-gray-200 rounded flex items-center justify-center flex-shrink-0">
-                      <span className="text-3xl">🖼️</span>
+                    <div className="w-20 h-20 bg-gray-200 rounded overflow-hidden flex items-center justify-center flex-shrink-0">
+                      {canInlinePreview(image.fileType, image.id) ? (
+                        // Use native img for local /public/uploads preview.
+                        <img
+                          src={image.filePath}
+                          alt={image.originalName}
+                          className="w-full h-full object-cover"
+                          loading="lazy"
+                          onError={() =>
+                            setPreviewLoadFailed((prev) => ({
+                              ...prev,
+                              [image.id]: true,
+                            }))
+                          }
+                        />
+                      ) : (
+                        <span className="text-3xl">{image.fileType === 'DICOM' ? '🩻' : '🖼️'}</span>
+                      )}
                     </div>
 
                     <div className="flex-1 min-w-0">
@@ -144,6 +180,19 @@ export default function ImagesPage() {
                     </div>
 
                     <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                          openPreview({
+                            filePath: image.filePath,
+                            originalName: image.originalName,
+                            fileType: image.fileType,
+                          })
+                        }
+                      >
+                        {isZh ? '预览' : 'Preview'}
+                      </Button>
                       <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(image.status)}`}>
                         {image.status}
                       </span>
@@ -155,6 +204,39 @@ export default function ImagesPage() {
           )}
         </CardContent>
       </Card>
+
+      {previewImage && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={closePreview}>
+          <div
+            className="w-full max-w-6xl rounded-lg bg-white shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b px-4 py-3">
+              <div className="min-w-0">
+                <h3 className="truncate text-base font-semibold text-gray-900">{previewImage.originalName}</h3>
+                <p className="text-xs text-gray-500">{previewImage.fileType}</p>
+              </div>
+              <Button variant="outline" size="sm" onClick={closePreview}>
+                {isZh ? '关闭' : 'Close'}
+              </Button>
+            </div>
+            <div className="flex max-h-[80vh] items-center justify-center bg-black p-3">
+              {previewImage.fileType === 'DICOM' ? (
+                <div className="text-center text-gray-300">
+                  <div className="mb-2 text-5xl">🩻</div>
+                  <p>{isZh ? 'DICOM 文件暂不支持网页内预览' : 'DICOM preview is not available in browser.'}</p>
+                </div>
+              ) : (
+                <img
+                  src={previewImage.filePath}
+                  alt={previewImage.originalName}
+                  className="max-h-[76vh] w-auto max-w-full object-contain"
+                />
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

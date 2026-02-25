@@ -1,6 +1,7 @@
 import { createTRPCRouter, protectedProcedure } from '../trpc'
 import { z } from 'zod'
 import { TRPCError } from '@trpc/server'
+import { buildImageAccessUrl } from '@/lib/storage'
 
 export const imageRouter = createTRPCRouter({
   list: protectedProcedure
@@ -40,7 +41,10 @@ export const imageRouter = createTRPCRouter({
       }
 
       return {
-        images,
+        images: images.map((image) => ({
+          ...image,
+          filePath: buildImageAccessUrl(image.id, image.filePath),
+        })),
         nextCursor,
       }
     }),
@@ -82,7 +86,10 @@ export const imageRouter = createTRPCRouter({
         throw new Error('Unauthorized')
       }
 
-      return image
+      return {
+        ...image,
+        filePath: buildImageAccessUrl(image.id, image.filePath),
+      }
     }),
 
   delete: protectedProcedure

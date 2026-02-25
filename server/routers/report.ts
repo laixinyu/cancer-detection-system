@@ -4,6 +4,7 @@ import { TRPCError } from '@trpc/server'
 import { Prisma } from '@prisma/client'
 import { assertReportTransition } from '@/server/compliance/workflow'
 import { writeAuditLog } from '@/server/compliance/audit'
+import { buildImageAccessUrl } from '@/lib/storage'
 
 export const reportRouter = createTRPCRouter({
   list: protectedProcedure
@@ -64,6 +65,7 @@ export const reportRouter = createTRPCRouter({
             include: {
               image: {
                 select: {
+                  id: true,
                   originalName: true,
                   filePath: true,
                 },
@@ -80,7 +82,16 @@ export const reportRouter = createTRPCRouter({
       }
 
       return {
-        reports,
+        reports: reports.map((report) => ({
+          ...report,
+          detection: {
+            ...report.detection,
+            image: {
+              ...report.detection.image,
+              filePath: buildImageAccessUrl(report.detection.image.id, report.detection.image.filePath),
+            },
+          },
+        })),
         nextCursor,
       }
     }),
@@ -106,6 +117,7 @@ export const reportRouter = createTRPCRouter({
             include: {
               image: {
                 select: {
+                  id: true,
                   originalName: true,
                   filePath: true,
                 },
@@ -129,7 +141,16 @@ export const reportRouter = createTRPCRouter({
         }
       }
 
-      return report
+      return {
+        ...report,
+        detection: {
+          ...report.detection,
+          image: {
+            ...report.detection.image,
+            filePath: buildImageAccessUrl(report.detection.image.id, report.detection.image.filePath),
+          },
+        },
+      }
     }),
 
   create: protectedProcedure

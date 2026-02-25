@@ -6,6 +6,7 @@ import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { api } from '@/lib/trpc'
 import { useI18n } from '@/components/i18n-provider'
+import { formatDate } from '@/lib/utils'
 
 interface NotificationItem {
   id: string
@@ -14,20 +15,6 @@ interface NotificationItem {
   message: string
   timestamp: Date
   read: boolean
-}
-
-function toRelativeTime(
-  date: Date,
-  t: (key: string, vars?: Record<string, string | number>) => string
-) {
-  const now = new Date()
-  const diffMs = now.getTime() - date.getTime()
-  const diffMins = Math.floor(diffMs / 60000)
-  if (diffMins < 1) return t('notify.justNow')
-  if (diffMins < 60) return t('notify.minutesAgo', { count: diffMins })
-  const diffHours = Math.floor(diffMins / 60)
-  if (diffHours < 24) return t('notify.hoursAgo', { count: diffHours })
-  return date.toLocaleDateString()
 }
 
 export default function NotificationPanel() {
@@ -175,7 +162,7 @@ export default function NotificationPanel() {
                             )}
                           </div>
                           <p className="text-sm text-gray-600 mt-1">{notification.message}</p>
-                          <p className="text-xs text-gray-400 mt-2">{toRelativeTime(notification.timestamp, t)}</p>
+                          <p className="text-xs text-gray-400 mt-2">{formatDate(notification.timestamp)}</p>
                         </div>
                       </div>
                     </button>

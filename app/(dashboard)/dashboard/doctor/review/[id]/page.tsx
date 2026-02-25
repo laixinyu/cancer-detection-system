@@ -8,6 +8,7 @@ import ImageViewer from '@/components/image-viewer/image-viewer'
 import { api } from '@/lib/trpc'
 import { useI18n } from '@/components/i18n-provider'
 import { getInfectionCoverageLabel } from '@/lib/screening'
+import { formatDate } from '@/lib/utils'
 
 type AnnotationRect = {
   id: string
@@ -316,7 +317,7 @@ export default function ReviewPage() {
             <div>
               <div className="text-sm text-gray-600">{isZh ? '上传日期' : 'Upload Date'}</div>
               <div className="font-medium">
-                {new Date(detection.image.createdAt).toLocaleDateString()}
+                {formatDate(detection.image.createdAt)}
               </div>
             </div>
           </div>

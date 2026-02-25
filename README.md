@@ -145,6 +145,7 @@ Baseline for current code and `npm run train:best`:
   - Storage: `>= 20GB` free
 
 Notes:
+
 - If GPU utilization is low while CPU is saturated, move dataset to NVMe SSD first, then increase `--num-workers` (current recommendation: `16`).
 - If VRAM is insufficient, reduce `--batch-size` from `64` to `48` or `32`.
 
@@ -161,6 +162,7 @@ python scripts/export_torchxrayvision_multitask_to_onnx.py --output ../models/cx
 ```
 
 Output channel order:
+
 1. Pneumonia
 2. Nodule
 3. Mass
@@ -180,6 +182,7 @@ Invoke-RestMethod http://localhost:8000/health
 ```
 
 Expected key fields:
+
 - `modelLoaded: true`
 - `modelPath: /app/models/cxr_multitask.onnx`
 - `modelVersion: cxr-multitask-v1`
@@ -188,6 +191,7 @@ Expected key fields:
 ## Evaluation
 
 Prepare CSV with columns:
+
 - `y_true` (0/1)
 - `y_score` (0~1)
 
@@ -198,6 +202,7 @@ python ai-service/scripts/evaluate_predictions.py --csv .\your_val.csv --thr-sen
 ```
 
 Report includes:
+
 - AUROC
 - ECE (10 bins)
 - High-sensitivity operating point metrics
@@ -212,6 +217,7 @@ npm run train:best
 ```
 
 Default flow:
+
 - optional offline resize to 512
 - train with best-practice defaults
 - CUDA preflight first (prints `torch/cuda` info); if CUDA is unavailable in current Python env, script fails fast.
@@ -251,6 +257,7 @@ Below is the equivalent manual flow (reference only).
 ### Admin page updates
 
 `/dashboard/admin` now shows:
+
 - System readiness (DB/AI)
 - Clinical evidence gate PASS/NOT PASS
 - Open P0/P1 incidents
@@ -270,6 +277,7 @@ npx prisma migrate dev --name add_clinical_evidence_and_ops
 Use validation data to derive calibration temperature and operating points instead of hardcoding.
 
 Input CSV format:
+
 - `task` in `pneumonia` or `lesion`
 - `y_true` in `0/1`
 - `y_score` in `0~1`
@@ -289,6 +297,7 @@ docker compose up -d --build ai-service
 
 Service will auto-load `AI_CLINICAL_CONFIG_PATH` (default `/app/models/clinical_config.json`).
 Check `/health` for:
+
 - `taskThresholds`
 - `clinicalConfigSource`
 
@@ -301,6 +310,7 @@ The service reads `AI_CLINICAL_GOVERNANCE_PATH` (default `/app/models/clinical_g
 - Stage is exposed via `/health` and `/predict` (`clinicalStage`).
 
 Template:
+
 - `ai-service/models/clinical_governance.example.json`
 
 ### Lesion localization upgrade path
@@ -318,6 +328,7 @@ python ai-service/scripts/check_detector_onnx.py --model ../models/cxr_detector.
 ```
 
 This script verifies:
+
 - ONNX input/output tensor metadata
 - Runtime output shape with a dummy tensor
 - Whether the output layout is compatible with current decoder logic
@@ -331,6 +342,7 @@ python ai-service/scripts/generate_detector_manifest.py --model .\ai-service\mod
 ```
 
 Then set in `.env`:
+
 - `AI_DETECTOR_PROFILE_PATH=/app/models/detector_profile.json`
 - `AI_DETECTOR_SHA256=<content of detector.sha256>`
 
@@ -347,9 +359,11 @@ The script exits with non-zero code if max score/box drift exceeds configured ep
 ### Train with NIH ChestXray14 (Google-hosted NIH dataset)
 
 Dataset source you provided:
+
 - `https://nihcc.app.box.com/v/ChestXray-NIHCC`
 
 Expected local layout (after download/extract):
+
 - `Data_Entry_2017.csv`
 - image files under one or more subfolders (script will recursively scan)
 
@@ -366,6 +380,7 @@ python ai-service/scripts/prepare_nih_chestxray14.py --dataset-root "E:\datasets
 ```
 
 Notes:
+
 - Download supports resume and stores archives in `dataset-root/downloads`.
 - Extraction writes images into `dataset-root/images`.
 - Verification checks archive readability and CSV/image coverage.
@@ -400,6 +415,7 @@ The AI service now performs detector compatibility self-check at startup.
 - `AI_ENFORCE_DETECTOR_STARTUP_CHECK=false`: service starts but detector is disabled.
 
 Check gate status in `/health`:
+
 - `detectorStartupCheckPassed`
 - `detectorStartupCheckMessage`
 
@@ -408,6 +424,7 @@ Check gate status in `/health`:
 The service enforces governance requirements before allowing decision-support stages.
 
 Config:
+
 - `AI_ENFORCE_GOVERNANCE_GATE=true`
 - `AI_GOV_MIN_SITE_COUNT=2`
 - `AI_GOV_MIN_AUROC=0.90`
@@ -415,11 +432,13 @@ Config:
 - `AI_GOV_MIN_SPECIFICITY=0.85`
 
 Behavior:
+
 - If `deploymentStage=RESEARCH_ONLY`, gate always passes.
 - If `deploymentStage=PILOT_DECISION_SUPPORT` or `CLINICAL_DECISION_SUPPORT`, gate checks external validation metrics.
 - For `CLINICAL_DECISION_SUPPORT`, regulatory status must be one of `APPROVED/CLEARED/CERTIFIED`.
 
 Health endpoint fields:
+
 - `governanceGatePassed`
 - `governanceGateMessage`
 - `governanceCriteria`
@@ -456,3 +475,9 @@ docker compose logs -f ai-service
 
 - This system is for research/decision support, not standalone clinical diagnosis.
 - For full setup details and troubleshooting, see `SETUP.md`.
+
+演示账号
+
+* **patient.demo@xray-ai.local** / **Patient#2026**
+* **doctor.demo@xray-ai.local** / **Doctor#2026**
+* **admin.demo@xray-ai.local** / **Admin#2026**

@@ -5,13 +5,23 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
+function pad2(value: number): string {
+  return String(value).padStart(2, '0')
+}
+
 export function formatDate(date: Date | string): string {
   const d = new Date(date)
-  return d.toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  })
+  const year = d.getFullYear()
+  const month = pad2(d.getMonth() + 1)
+  const day = pad2(d.getDate())
+  const hours = pad2(d.getHours())
+  const minutes = pad2(d.getMinutes())
+  const seconds = pad2(d.getSeconds())
+  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`
+}
+
+export function formatTime(date: Date | string): string {
+  return formatDate(date)
 }
 
 export function formatFileSize(bytes: number): string {
