@@ -2,8 +2,8 @@
 
 ## 文档语言
 
-- English: `SETUP.md`
-- 简体中文: `SETUP.zh-CN.md`
+- 当前文档：`SETUP.zh-CN.md`（中文）
+- 中文主文档：`SETUP.md`
 
 ## 前置条件
 

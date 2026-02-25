@@ -1,7 +1,7 @@
 package observability
 
-// File: internal/observability/tracing.go
-// Purpose: OpenTelemetry tracing bootstrap and graceful shutdown hooks.
+// 文件： internal/observability/tracing.go
+// 用途：OpenTelemetry 链路追踪初始化与优雅关闭钩子。
 
 import (
 	"context"

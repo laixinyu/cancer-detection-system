@@ -1,9 +1,9 @@
-# Public Packages
+# 公共包目录
 
-This directory is reserved for reusable libraries that can be imported by external projects.
+该目录用于放置可被外部项目复用的公共库代码。
 
-Current backend business code remains under `internal/` to enforce encapsulation.
+当前后端业务代码仍保留在 `internal/` 下，以保证封装边界。
 
-Rules:
-- Place only stable, generic utilities in `pkg/`.
-- Keep domain/repository/service code private in `internal/`.
+约定：
+- `pkg/` 只放稳定、通用、可复用的工具与库。
+- 领域模型、仓储、服务等业务实现继续保留在 `internal/`。

@@ -1,7 +1,7 @@
 package service
 
-// File: internal/service/analytics.go
-// Purpose: Service layer containing business rules and orchestration logic.
+// 文件： internal/service/analytics.go
+// 用途：服务层，承载业务规则与流程编排逻辑。
 
 import (
 	"context"

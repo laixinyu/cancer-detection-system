@@ -1,7 +1,7 @@
 package bridgehttp
 
-// File: internal/rpc/bridgehttp/handler.go
-// Purpose: Internal gRPC bridge contracts, codec, and HTTP bridge adapter.
+// 文件： internal/rpc/bridgehttp/handler.go
+// 用途：内部 gRPC 桥接协议、编解码器与 HTTP 适配器。
 
 import (
 	"bytes"
@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"strings"
 
+	"cancer-detection-backend/internal/observability"
 	"cancer-detection-backend/internal/rpc/bridge"
 )
 
@@ -23,7 +24,7 @@ func New(router http.Handler) *Handler {
 	return &Handler{router: router}
 }
 
-func (h *Handler) Handle(_ context.Context, req *bridge.RequestEnvelope) (*bridge.ResponseEnvelope, error) {
+func (h *Handler) Handle(ctx context.Context, req *bridge.RequestEnvelope) (*bridge.ResponseEnvelope, error) {
 	path := req.Path
 	values := url.Values{}
 	for k, v := range req.Query {
@@ -40,7 +41,7 @@ func (h *Handler) Handle(_ context.Context, req *bridge.RequestEnvelope) (*bridg
 	} else {
 		bodyReader = bytes.NewReader(nil)
 	}
-	httpReq, err := http.NewRequest(req.Method, path, bodyReader)
+	httpReq, err := http.NewRequestWithContext(ctx, req.Method, path, bodyReader)
 	if err != nil {
 		return nil, err
 	}
@@ -51,6 +52,11 @@ func (h *Handler) Handle(_ context.Context, req *bridge.RequestEnvelope) (*bridg
 	}
 	if req.Body != nil && httpReq.Header.Get("Content-Type") == "" {
 		httpReq.Header.Set("Content-Type", "application/json")
+	}
+	if requestID := strings.TrimSpace(httpReq.Header.Get("X-Request-Id")); requestID == "" {
+		if requestID = observability.RequestIDFromContext(ctx); requestID != "" {
+			httpReq.Header.Set("X-Request-Id", requestID)
+		}
 	}
 
 	rec := httptest.NewRecorder()

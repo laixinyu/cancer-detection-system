@@ -1,7 +1,7 @@
 package observability
 
-// File: internal/observability/metrics.go
-// Purpose: Metrics and observability primitives for runtime monitoring.
+// 文件： internal/observability/metrics.go
+// 用途：运行期监控指标与可观测性基础组件。
 
 import (
 	"fmt"

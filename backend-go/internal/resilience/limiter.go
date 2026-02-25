@@ -1,7 +1,7 @@
 package resilience
 
-// File: internal/resilience/limiter.go
-// Purpose: Resilience primitives including token-bucket rate limiter and keyed limiter.
+// 文件： internal/resilience/limiter.go
+// 用途：弹性基础组件，包括令牌桶限流器与按键限流器。
 
 import (
 	"sync"

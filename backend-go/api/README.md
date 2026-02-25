@@ -1,10 +1,10 @@
-# API Contracts
+# API 协议定义
 
-This directory stores API contract definitions for external and inter-service communication.
+该目录用于存放对外接口与服务间通信的协议定义文件。
 
-- OpenAPI: `../openapi.yaml`, `../openapi.json`
-- Future gRPC proto files should be placed here (for generated stubs and schema governance).
+- OpenAPI：`../openapi.yaml`、`../openapi.json`
+- 后续 gRPC Proto 文件也应放在此处（便于生成桩代码与协议治理）。
 
-Design intent:
-- Keep transport contracts versioned and reviewable.
-- Avoid embedding ad-hoc payload contracts directly in handlers.
+设计原则：
+- 传输层协议必须可版本化、可评审。
+- 避免在 handler 中散落临时或隐式的请求/响应结构定义。

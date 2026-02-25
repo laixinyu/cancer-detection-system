@@ -1,58 +1,58 @@
-# X-ray Cancer Detection System - Setup Instructions
+# X 光肺部检测系统 - 环境搭建指南
 
-## Documentation Languages
+## 文档语言
 
-- English: `SETUP.md`
-- 简体中文: `SETUP.zh-CN.md`
+- 当前文档：`SETUP.md`（中文）
+- 中文副本：`SETUP.zh-CN.md`
 
-## Prerequisites
+## 前置条件
 
-- Node.js 18+ installed
-- Docker Desktop installed and running
-- PostgreSQL (via Docker or local)
+- 已安装 Node.js 18+
+- 已安装并启动 Docker Desktop
+- PostgreSQL（可用 Docker 或本地）
 
-## Installation Steps
+## 安装步骤
 
-### 1. Install Dependencies
+### 1. 安装依赖
+
 ```bash
 npm install
 ```
 
-### 2. Start Infrastructure Services
-```bash
-# Start PostgreSQL, Redis and AI Service using Docker
-docker-compose up -d
+### 2. 启动基础服务
 
-# Or run PostgreSQL/Redis/AI service locally
+```bash
+# 使用 Docker 启动 PostgreSQL、Redis、AI 服务
+docker compose up -d
 ```
 
-### 3. Setup Database
+### 3. 初始化数据库
+
 ```bash
-# Generate Prisma client
+# 生成 Prisma Client
 npx prisma generate
 
-# Run database migrations
+# 执行迁移
 npx prisma migrate dev --name init
-
-# (Optional) Seed database with sample data
-npm run db:seed
 ```
 
-### 4. Environment Variables
-The `.env` file is already configured with default values:
-- Database: PostgreSQL on localhost:5432
-- Redis: localhost:6379
-- AI service: localhost:8000
-- NextAuth secret (change in production)
+### 4. 环境变量
 
-**Important:** Change `NEXTAUTH_SECRET` before deploying to production:
+项目内 `.env` 默认已配置：
+- 数据库：PostgreSQL（localhost:5432）
+- Redis：localhost:6379
+- AI 服务：localhost:8000
+- NextAuth 密钥（生产环境必须替换）
+
+生产环境请先替换密钥：
+
 ```bash
 openssl rand -base64 32
 ```
 
-### Optional: Storage Backend Switch (Local / MinIO / S3)
+### 可选：上传存储切换（本地 / MinIO / S3）
 
-Default local mode now uses local object storage (MinIO, S3-compatible):
+默认 local 模式为本地对象存储（MinIO，S3 兼容）：
 
 ```env
 STORAGE_PROVIDER=local
@@ -67,7 +67,7 @@ S3_FORCE_PATH_STYLE=true
 S3_PREFIX=uploads
 ```
 
-Environment isolation options:
+环境隔离可选配置：
 
 ```env
 S3_BUCKET_DEV=cancer-images-dev
@@ -78,7 +78,7 @@ S3_PREFIX_TEST=uploads
 S3_PREFIX_PROD=uploads
 ```
 
-Switch to MinIO / S3:
+切换到 MinIO / S3：
 
 ```env
 STORAGE_PROVIDER=s3
@@ -91,63 +91,68 @@ S3_FORCE_PATH_STYLE=true
 S3_PREFIX=uploads
 ```
 
-Notes:
-- Leave `S3_ENDPOINT` empty to use AWS S3 default endpoint.
-- MinIO usually needs `S3_FORCE_PATH_STYLE=true`.
-- The app stores `file_path` as `s3://bucket/key` and serves it via a controlled API route.
-- To force legacy disk storage, set:
-  `STORAGE_PROVIDER=fs`, `LOCAL_UPLOAD_DIR=./public/uploads`, `LOCAL_UPLOAD_PUBLIC_PREFIX=/uploads`
+说明：
+- `S3_ENDPOINT` 留空时即使用 AWS S3 官方端点。
+- MinIO 通常需要 `S3_FORCE_PATH_STYLE=true`。
+- 系统会把数据库中的 `file_path` 存成 `s3://bucket/key`，并通过受控接口返回可访问地址。
+- 如需强制回退到磁盘存储，可设置：
+  `STORAGE_PROVIDER=fs`、`LOCAL_UPLOAD_DIR=./public/uploads`、`LOCAL_UPLOAD_PUBLIC_PREFIX=/uploads`。
 
-### 5. Run Development Server
+### 5. 启动开发服务
+
 ```bash
 npm run dev
 ```
 
-The application will be available at http://localhost:3000
+访问：`http://localhost:3000`
 
-## Real AI Detection Integration
+## 真实 AI 检测接入
 
-### AI service endpoint
-The Next.js upload API calls:
+### Next.js 调用的 AI 接口
+
 - `POST {AI_SERVICE_URL}/predict`
 - `GET {AI_SERVICE_URL}/health`
 
-### Expected `/predict` response
+### `/predict` 关键输出（示例）
+
 ```json
 {
   "modelVersion": "cxr-multitask-v1",
   "cancerProbability": 0.74,
-  "regions": [],
   "labelScores": {
     "肺炎(Pneumonia)": 0.61,
     "结节(Nodule)": 0.55,
     "肿块(Mass)": 0.74,
     "浸润/实变(Opacity)": 0.58
   },
-  "topFindings": ["肿块(Mass)", "肺炎(Pneumonia)", "浸润/实变(Opacity)"],
-  "calibrationTemperature": 1.6,
-  "decisionHighSensitivity": true,
-  "decisionHighSpecificity": true,
-  "clinicalUse": "RESEARCH_ONLY",
-  "heatmapPath": null
+  "infectionCoverage": {
+    "infectionAny": 0.66,
+    "covidLikeWhiteLungPattern": 0.42
+  },
+  "whiteLungAssessment": {
+    "whiteLungScore": 0.31,
+    "severity": "mild"
+  }
 }
 ```
 
-### Use your own trained ONNX model
-1. Put model file at:
-`ai-service/models/cxr_multitask.onnx`
-2. Restart ai-service:
+### 使用你自己的 ONNX 模型
+
+1. 模型放置到：`ai-service/models/cxr_multitask.onnx`
+2. 重启 AI 服务：
+
 ```bash
-docker-compose up -d --build ai-service
+docker compose up -d --build ai-service
 ```
-3. Check health:
+
+3. 健康检查：
+
 ```bash
 curl http://localhost:8000/health
 ```
 
-If no ONNX model is found, the AI service uses a deterministic image-analysis fallback (non-random) so the pipeline remains functional.
+## 导出多任务 ONNX（肺炎 + 结节/肿块）
 
-### Export multitask ONNX (A: Pneumonia + B: Nodule/Mass)
 ```bash
 cd ai-service
 python -m venv .venv_export
@@ -156,20 +161,16 @@ pip install -r requirements-export.txt
 python scripts/export_torchxrayvision_multitask_to_onnx.py --output ../models/cxr_multitask.onnx
 ```
 
-Output channel order of the exported model:
-1. Pneumonia
-2. Nodule
-3. Mass
-4. Lung Opacity
+## 在验证集上评估
 
-### Evaluate on your validation set
-Prepare CSV with columns: `y_true,y_score`
+准备 CSV（`y_true,y_score`）：
+
 ```bash
 python scripts/evaluate_predictions.py --csv .\your_val.csv --thr-sens 0.30 --thr-spec 0.70 --out .\eval_report.json
 ```
 
-### Run AI service locally (without Docker)
-If Docker image pulling is restricted in your environment:
+## 无法使用 Docker 时的本地运行
+
 ```bash
 cd ai-service
 python -m venv .venv
@@ -178,132 +179,59 @@ pip install -r requirements.txt
 uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
-## Default User Accounts
+## 角色说明
 
-You'll need to register users through the `/register` page.
+- `PATIENT`：上传影像、查看结果与报告
+- `DOCTOR`：审阅 AI 结果、标注、生成报告
+- `ADMIN`：管理系统、查看统计与运维状态
 
-### User Roles
-- **PATIENT**: Can upload X-ray images and view results
-- **DOCTOR**: Can review AI results, annotate images, generate reports
-- **ADMIN**: System management and statistics
+## 排障
 
-## Project Structure
+### Docker 未运行
 
-```
-cancer-detection-system/
-├── app/                      # Next.js App Router pages
-│   ├── (auth)/              # Authentication pages
-│   ├── (dashboard)/         # Protected dashboard pages (to be implemented)
-│   └── api/                 # API routes
-├── components/              # React components
-│   ├── ui/                  # Base UI components
-│   ├── image-viewer/        # Image viewing components (to be implemented)
-│   ├── annotation/          # Annotation tools (to be implemented)
-│   └── charts/              # Chart components (to be implemented)
-├── lib/                     # Utility functions
-├── server/                  # tRPC server
-│   ├── routers/             # tRPC routers
-│   ├── services/            # Business logic (to be implemented)
-│   └── ai/                  # AI model integration (to be implemented)
-├── prisma/                  # Database schema
-└── types/                   # TypeScript types
-```
-
-## Next Steps
-
-### Phase 1: Basic Infrastructure ✅
-- [x] Project initialization
-- [x] Database setup
-- [x] Authentication system
-- [x] Base UI components
-
-### Phase 2: Core Features (In Progress)
-- [ ] Patient dashboard
-- [ ] Doctor workstation
-- [ ] Image upload functionality
-- [ ] AI detection integration
-- [ ] Report generation
-
-### Phase 3: Advanced Features
-- [ ] Admin panel
-- [ ] Data analytics
-- [ ] Performance optimization
-- [ ] Security hardening
-
-## Troubleshooting
-
-### Docker not running
 ```bash
-# Start Docker Desktop manually
-# Then run: docker-compose up -d
+docker compose up -d
 ```
 
-### Database connection issues
+### 数据库连接失败
+
 ```bash
-# Check if PostgreSQL is running
 docker ps
-
-# View logs
 docker logs cancer-detection-db
 ```
 
-### Prisma Client errors
-```bash
-# Regenerate Prisma client
-npx prisma generate
+### Prisma 相关报错
 
-# Reset database (WARNING: deletes all data)
+```bash
+npx prisma generate
 npx prisma migrate reset
 ```
 
-## Development Commands
+## 常用命令
 
 ```bash
-# Start development server
 npm run dev
-
-# Build for production
 npm run build
-
-# Start production server
 npm start
-
-# Run linter
 npm run lint
-
-# Format code
-npm run format
-
-# Database commands
-npx prisma studio        # Open Prisma Studio
-npx prisma migrate dev   # Create migration
-npx prisma db push       # Push schema without migration
+npx prisma studio
+npx prisma migrate dev
+npx prisma db push
 ```
 
-## Technology Stack
+## 技术栈
 
-- **Framework**: Next.js 14 (App Router)
-- **Language**: TypeScript
-- **Styling**: Tailwind CSS
-- **Database**: PostgreSQL + Prisma ORM
-- **API**: tRPC
-- **Authentication**: NextAuth.js
-- **State Management**: React Query
-- **Caching**: Redis
+- 框架：Next.js（App Router）
+- 语言：TypeScript
+- 样式：Tailwind CSS
+- 数据库：PostgreSQL + Prisma
+- 接口层：tRPC
+- 认证：NextAuth.js
+- 推理服务：FastAPI + ONNX Runtime
 
-## Security Notes
+## 安全提醒
 
-- All passwords are hashed using bcrypt
-- JWT tokens for session management
-- HTTPS required in production
-- CORS properly configured
-- SQL injection prevention via Prisma
-- XSS protection built-in
-
-## Contributing
-
-This is a medical application. Please ensure:
-1. All code is thoroughly tested
-2. Security best practices followed
-3. HIPAA compliance maintained
-4. Code review before merge
+- 密码使用 bcrypt 哈希存储
+- 生产环境必须启用 HTTPS
+- 使用 Prisma 避免 SQL 注入
+- 当前系统为辅助筛查，不可直接用于临床确诊

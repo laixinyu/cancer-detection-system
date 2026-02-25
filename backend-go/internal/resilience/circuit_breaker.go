@@ -1,7 +1,7 @@
 package resilience
 
-// File: internal/resilience/circuit_breaker.go
-// Purpose: Resilience primitives for protecting upstream dependencies with a circuit breaker.
+// 文件： internal/resilience/circuit_breaker.go
+// 用途：弹性基础组件，使用熔断器保护上游依赖。
 
 import (
 	"errors"

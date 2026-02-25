@@ -1,7 +1,7 @@
 package domain
 
-// File: internal/domain/models.go
-// Purpose: Domain entities and model definitions shared across layers.
+// 文件： internal/domain/models.go
+// 用途：领域实体与跨层共享的数据模型定义。
 
 import "time"
 

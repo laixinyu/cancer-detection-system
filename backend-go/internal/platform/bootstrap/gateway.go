@@ -1,7 +1,7 @@
 package bootstrap
 
-// File: internal/platform/bootstrap/gateway.go
-// Purpose: Composition root for wiring gateway infrastructure, repositories, and services.
+// 文件： internal/platform/bootstrap/gateway.go
+// 用途：组合根，装配网关基础设施、仓储与服务依赖。
 
 import (
 	"context"

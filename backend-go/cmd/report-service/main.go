@@ -1,7 +1,7 @@
 package main
 
-// File: cmd/report-service/main.go
-// Purpose: Report microservice entrypoint and report API handlers.
+// 文件： cmd/report-service/main.go
+// 用途：报告微服务入口与报告 API 处理逻辑。
 
 import (
 	"context"

@@ -1,7 +1,7 @@
 package lifecycle
 
-// File: internal/platform/lifecycle/runtime.go
-// Purpose: Unified service runtime lifecycle for HTTP/gRPC startup and graceful shutdown.
+// 文件： internal/platform/lifecycle/runtime.go
+// 用途：统一服务运行时生命周期，覆盖 HTTP/gRPC 启动与优雅关闭。
 
 import (
 	"context"

@@ -1,7 +1,7 @@
 package cache
 
-// File: internal/cache/memory.go
-// Purpose: Cache abstraction interfaces and cache backend implementations.
+// 文件： internal/cache/memory.go
+// 用途：缓存抽象接口与缓存后端实现。
 
 import (
 	"context"

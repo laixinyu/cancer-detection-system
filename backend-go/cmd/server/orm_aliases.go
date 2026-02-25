@@ -1,7 +1,7 @@
 package main
 
-// File: cmd/server/orm_aliases.go
-// Purpose: Gateway handlers, middleware, and wiring for external HTTP APIs.
+// 文件： cmd/server/orm_aliases.go
+// 用途：网关的处理器、中间件与对外 HTTP API 路由装配。
 
 import "cancer-detection-backend/internal/domain"
 

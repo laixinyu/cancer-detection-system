@@ -1,7 +1,7 @@
 package config
 
-// File: internal/config/config.go
-// Purpose: Configuration parsing and normalization from environment variables.
+// 文件： internal/config/config.go
+// 用途：配置加载，从环境变量解析并规范化配置。
 
 import (
 	"fmt"

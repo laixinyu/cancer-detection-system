@@ -1,7 +1,7 @@
 package main
 
-// File: cmd/detection-service/main.go
-// Purpose: Detection microservice entrypoint and detection API handlers.
+// 文件： cmd/detection-service/main.go
+// 用途：检测微服务入口与检测 API 处理逻辑。
 
 import (
 	"context"

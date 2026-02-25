@@ -1,7 +1,7 @@
 package main
 
-// File: cmd/server/grpc_bridge_handler.go
-// Purpose: Gateway handlers, middleware, and wiring for external HTTP APIs.
+// 文件： cmd/server/grpc_bridge_handler.go
+// 用途：网关的处理器、中间件与对外 HTTP API 路由装配。
 
 import (
 	"encoding/json"
@@ -33,6 +33,7 @@ func (a *app) grpcBridgeHandler(client bridge.ServiceClient) gin.HandlerFunc {
 		headers := map[string]string{
 			"Authorization": c.GetHeader("Authorization"),
 			"Content-Type":  c.GetHeader("Content-Type"),
+			"X-Request-Id":  c.GetHeader(requestIDHeader),
 		}
 		req := &bridge.RequestEnvelope{
 			Method:  c.Request.Method,
@@ -60,7 +61,7 @@ func (a *app) grpcBridgeHandler(client bridge.ServiceClient) gin.HandlerFunc {
 			c.JSON(status, b)
 			return
 		default:
-			// try to preserve JSON body from generic decode
+			// 尽量保留通用解码后的 JSON 结构
 			raw, _ := json.Marshal(b)
 			var obj any
 			if err := json.Unmarshal(raw, &obj); err == nil {

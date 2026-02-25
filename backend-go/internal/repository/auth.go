@@ -1,7 +1,7 @@
 package repository
 
-// File: internal/repository/auth.go
-// Purpose: Repository layer responsible for data access and persistence.
+// 文件： internal/repository/auth.go
+// 用途：仓储层，负责数据访问与持久化。
 
 import (
 	"context"

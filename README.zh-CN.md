@@ -4,8 +4,8 @@
 
 ## 文档语言
 
-- English: `README.md`
-- 简体中文: `README.zh-CN.md`
+- 当前文档：`README.zh-CN.md`（中文）
+- 中文主文档：`README.md`
 
 ## 当前状态
 

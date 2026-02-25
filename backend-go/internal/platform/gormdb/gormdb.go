@@ -1,7 +1,7 @@
 package gormdb
 
-// File: internal/platform/gormdb/gormdb.go
-// Purpose: Platform integration helpers such as database bootstrapping.
+// 文件： internal/platform/gormdb/gormdb.go
+// 用途：平台集成辅助组件（如数据库初始化）。
 
 import (
 	"fmt"

@@ -1,7 +1,7 @@
 package cache
 
-// File: internal/cache/noop.go
-// Purpose: Cache abstraction interfaces and cache backend implementations.
+// 文件： internal/cache/noop.go
+// 用途：缓存抽象接口与缓存后端实现。
 
 import (
 	"context"

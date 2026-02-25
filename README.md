@@ -1,42 +1,42 @@
-# X-ray Lung Detection System
+# X 光肺部检测系统
 
-AI-assisted chest X-ray screening platform with role-based workflow for patient upload, doctor review, and report generation.
+面向胸部 X 光的 AI 辅助筛查平台，支持患者上传、医生审阅、报告生成与管理后台。
 
-## Documentation Languages
+## 文档语言
 
-- English: `README.md`
-- 简体中文: `README.zh-CN.md`
+- 当前文档：`README.md`（中文）
+- 中文副本：`README.zh-CN.md`
 
-## Current Status
+## 当前状态
 
-- Frontend: Next.js (kept)
-- Backend: Go Gin (`backend-go`, now handles auth/upload/image file read/health)
-- AI Service: FastAPI + ONNX Runtime
-- AI tasks:
-  - A: Pneumonia risk
-  - B: Nodule/Mass lesion risk
-  - C: Infection coverage spectrum + white-lung quantification (screening-level)
-- Core screening workflow:
-  - Unified `screeningSummary` generated on upload (pneumonia + lesion + white-lung + triage priority)
-  - Doctor queue prioritization uses screening triage when available
-  - Review and report pages display structured screening metrics
-- Compliance posture:
-  - Heuristic pseudo bounding boxes are disabled by default
-  - Output marked `RESEARCH_ONLY` (non-clinical use)
-  - High-sensitivity and high-specificity decision thresholds supported
-  - Clinical evidence ledger + governance gate + ops incident management added (admin)
+- 前端：Next.js（保留）
+- 后端：Go Gin（`backend-go`，已承接认证/上传/影像文件读取/健康检查）
+- AI 服务：FastAPI + ONNX Runtime
+- AI 任务：
+  - A：肺炎风险
+  - B：结节/肿块病灶风险
+  - C：感染覆盖风险谱 + 白肺量化（筛查级）
+- 核心筛查流程：
+  - 上传时自动生成统一 `screeningSummary`（肺炎 + 病灶 + 白肺 + 分诊优先级）
+  - 医生队列可按分诊优先级处理病例
+  - 审阅页与报告页展示结构化筛查结果
+- 合规与运维：
+  - 默认关闭伪病灶框启发式输出
+  - 默认 `RESEARCH_ONLY`（研究/辅助用途）
+  - 支持高敏/高特双工作点
+  - 已接入临床证据台账、治理门禁、运维事件管理
 
-## Backend Architecture (Gin Microservices)
+## 后端架构（Gin 微服务）
 
-See full backend diagram and split strategy in:
+后端详细架构图与拆分策略见：
 
 - `backend-go/MICROSERVICES.md`
 
-Quick view:
+简图如下：
 
 ```mermaid
 flowchart LR
-  FE[Next.js Frontend] --> GW[API Gateway cmd/server]
+  FE[Next.js Front端] --> GW[API Gateway cmd/server]
   GW --> AUTH[Auth Upload Image]
   GW --> DET[detection-service]
   GW --> REP[report-service]
@@ -49,143 +49,98 @@ flowchart LR
   AUTH --> AI[FastAPI AI Service]
 ```
 
-Rule: frontend never calls `ai-service` directly; backend calls AI internally.
+约束：前端不允许直连 `ai-service`，必须由后端服务在服务端内网调用 AI。
 
-## System Architecture
+## 系统架构
 
 ```mermaid
 flowchart TB
-  U1["Patient"]
-  U2["Doctor"]
-  U3["Admin"]
+  U1[患者] --> FE[前端层 Next.js App Router]
+  U2[医生] --> FE
+  U3[管理员] --> FE
 
-  subgraph OL["Online Screening and Review Path"]
-    subgraph FE["Frontend Next.js App Router"]
-      P1["Patient Upload and History"]
-      P2["Doctor Queue and Review"]
-      P3["Report and PDF Export"]
-      P4["Admin Readiness and Governance"]
-    end
+  FE --> BE[应用层 Next.js API 与 tRPC]
+  BE --> AI[AI 推理层 FastAPI 与 ONNX Runtime]
+  BE --> DB[PostgreSQL + Prisma]
+  BE --> REDIS[Redis]
+  BE --> UPLOADS[public/uploads 影像文件]
+  AI --> MODELS[ai-service/models 模型与配置]
 
-    subgraph BE["Backend Next.js API and tRPC"]
-      A1["NextAuth RBAC"]
-      A2["Upload API /api/images/upload"]
-      A3["tRPC user image detection report ops"]
-      A4["/api/health and /api/ready"]
-    end
-
-    subgraph AI["AI Inference FastAPI and ONNX Runtime"]
-      M0["/predict"]
-      M1["Multitask Classifier Pneumonia Nodule Mass Opacity"]
-      M2["Region Proposals and FP Reduction"]
-      M3["Screening Summary and Triage"]
-      M4["/health"]
-    end
-
-    subgraph DS["Data and Storage"]
-      D1["PostgreSQL via Prisma"]
-      D2["Redis"]
-      F1["public/uploads"]
-      F2["ai-service/models"]
-    end
-  end
-
-  subgraph OFF["Offline Training and Model Release Path"]
-    N1["NIH ChestXray14 Images and Metadata"]
-    N2["prepare_nih_chestxray14.py"]
-    N3["train_nih_multitask.py"]
-    N4["export_trained_multitask_to_onnx.py"]
-    N5["docker compose build ai-service"]
-  end
-
-  U1 --> FE
-  U2 --> FE
-  U3 --> FE
-  FE --> BE
-  A1 --> D1
-  A2 --> F1
-  A2 --> M0
-  A3 --> D1
-  A3 --> D2
-  A4 --> D1
-  A4 --> M4
-  M0 --> M1
-  M0 --> M2
-  M0 --> M3
-  M1 --> F2
-  M2 --> F2
-
-  N1 --> N2 --> N3 --> N4 --> F2 --> N5 --> AI
+  NIH[NIH ChestXray14 图像与元数据] --> PREP[prepare_nih_chestxray14.py]
+  PREP --> TRAIN[train_nih_multitask.py]
+  TRAIN --> EXPORT[export_trained_multitask_to_onnx.py]
+  EXPORT --> MODELS
+  MODELS --> BUILD[docker compose build ai-service]
+  BUILD --> AI
 ```
 
-### Architecture Summary
+## 架构说明
 
-- Online path: patient upload -> backend workflow -> AI inference -> doctor review -> report and PDF export.
-- Offline path: NIH dataset preparation -> multitask training -> ONNX export -> model release into `ai-service/models` -> AI service rebuild.
-- Frontend: Next.js pages cover patient, doctor, and admin roles.
-- Backend: Go Gin serves core APIs; Next.js API acts as a transition compatibility layer (proxy to Gin); NextAuth login delegates to Gin.
-- AI service: FastAPI exposes `/predict` and `/health`, with multitask scores, region proposals, and screening summary output.
-- Data/storage: PostgreSQL stores business and governance data; Redis supports cache/scale; image files in `public/uploads`.
+- 在线链路：患者上传 -> 后端编排 -> AI 推理 -> 医生审阅 -> 报告与 PDF 导出。
+- 离线链路：NIH 数据准备 -> 多任务训练 -> ONNX 导出 -> 发布到 `ai-service/models` -> 重建 AI 服务。
+- 前端：Next.js 覆盖患者、医生、管理员三类角色。
+- 后端：Go Gin 负责核心业务接口；Next.js API 作为过渡兼容层（代理到 Gin）；NextAuth 使用 Gin 登录接口完成会话建立。
+- AI 服务：FastAPI 暴露 `/predict` 与 `/health`，输出多任务分数、候选区域与筛查摘要。
+- 数据与存储：PostgreSQL 保存核心业务与治理数据，Redis 用于缓存/扩展，影像保存在 `public/uploads`。
 
-## Quick Start
+## 快速开始
 
-### 1. Install dependencies
+### 1. 安装依赖
 
 ```bash
 npm install
 ```
 
-### 2. Start infra and AI service
+### 2. 启动基础服务与 AI 服务
 
 ```bash
 docker compose up -d
 ```
 
-This also starts `backend-go` (default `http://localhost:8080`).
+该命令会同时启动 `backend-go`（默认 `http://localhost:8080`）。
 
-### 3. Setup database
+### 3. 初始化数据库
 
 ```bash
 npx prisma generate
 npx prisma migrate dev --name init
 ```
 
-### 4. Start app
+### 4. 启动 Web 应用
 
 ```bash
 npm run dev
 ```
 
-App URL: `http://localhost:3000`
+访问地址：`http://localhost:3000`
 
-For local Go backend without Docker:
+如需本地直接启动 Go 后端（不走 Docker）：
 
 ```bash
 npm run dev:backend
 ```
 
-## Minimum Hardware Baseline (Current Version)
+## 最低硬件标准（当前版本）
 
-Baseline for current code and `npm run train:best`:
+以下是按当前代码与 `npm run train:best` 给出的最低可运行基线：
 
-- Training (full NIH dataset + offline resize + multitask training):
-  - GPU: NVIDIA CUDA GPU with `>= 12GB` VRAM (RTX 4070-class recommended)
-  - CPU: `>= 8` cores (`12~16` threads recommended)
-  - RAM: `>= 32GB`
-  - Storage: NVMe SSD with `>= 600GB` free (HDD strongly discouraged)
-- Inference deployment (ONNX Runtime + FastAPI):
-  - CPU-only: `>= 4` cores, `>= 8GB` RAM
-  - GPU inference: NVIDIA CUDA GPU with `>= 6GB` VRAM (`>= 8GB` recommended)
-  - Storage: `>= 20GB` free
+- 训练（NIH 全量 + 离线缩放 + 多任务训练）：
+  - GPU：NVIDIA CUDA 显卡，显存 `>= 12GB`（建议 RTX 4070 或同级）
+  - CPU：`>= 8` 核（建议 `12~16` 线程以上）
+  - 内存：`>= 32GB`
+  - 磁盘：NVMe SSD，可用空间 `>= 600GB`（强烈不建议 HDD）
+- 推理部署（ONNX Runtime + FastAPI）：
+  - CPU 部署：`>= 4` 核，内存 `>= 8GB`
+  - GPU 部署：NVIDIA CUDA 显卡，显存 `>= 6GB`（建议 `>= 8GB`）
+  - 磁盘：可用空间 `>= 20GB`
 
-Notes:
+说明：
+- 如果训练时 GPU 利用率低、CPU 满载，优先检查数据是否在 NVMe SSD，并提高 `--num-workers`（当前推荐 `16`）。
+- 若显存不足，可把 `--batch-size` 从 `64` 下调到 `48` 或 `32`。
 
-- If GPU utilization is low while CPU is saturated, move dataset to NVMe SSD first, then increase `--num-workers` (current recommendation: `16`).
-- If VRAM is insufficient, reduce `--batch-size` from `64` to `48` or `32`.
+## AI 模型流程
 
-## AI Model Workflow
-
-### Export multitask ONNX
+### 导出多任务 ONNX
 
 ```bash
 cd ai-service
@@ -195,298 +150,157 @@ pip install -r requirements-export.txt
 python scripts/export_torchxrayvision_multitask_to_onnx.py --output ../models/cxr_multitask.onnx
 ```
 
-Output channel order:
-
+导出通道顺序：
 1. Pneumonia
 2. Nodule
 3. Mass
 4. Lung Opacity
 
-### Rebuild AI service
+### 重建 AI 服务
 
 ```bash
 cd ..
 docker compose up -d --build ai-service
 ```
 
-### Health check
+### 健康检查
 
 ```bash
 Invoke-RestMethod http://localhost:8000/health
 ```
 
-Expected key fields:
-
+关键字段期望值：
 - `modelLoaded: true`
 - `modelPath: /app/models/cxr_multitask.onnx`
 - `modelVersion: cxr-multitask-v1`
 - `heuristicRegionsEnabled: false`
 
-## Evaluation
+### 部署端推理优化（ONNX Runtime + FastAPI）
 
-Prepare CSV with columns:
+- CUDA EP 与 IOBinding：
+  - `AI_ORT_PREFER_CUDA=true`
+  - `AI_ORT_ENABLE_IO_BINDING=true`
+  - `AI_ORT_CUDA_DEVICE_ID=0`
+  - `AI_ORT_GRAPH_OPT_LEVEL=all`
+- `/health` 可查看：
+  - `ortAvailableProviders`
+  - `modelActiveProviders`
+  - `detectorActiveProviders`
+- 前提：部署环境需安装 GPU 版本 ORT（`onnxruntime-gpu`）并具备 CUDA 运行时；否则会自动回退 `CPUExecutionProvider`。
 
-- `y_true` (0/1)
-- `y_score` (0~1)
+说明：
+- 当前分类模型 `cxr_multitask.onnx` 已是“单模型多任务头”，天然共享 Backbone（已完成你说的分类多模型融合思路）。
+- 目前检测模型 `cxr_detector.onnx` 仍是独立图。如果后续要进一步降低总延迟，可考虑把检测与分类做联合导出（工程改造较大，需同步改解码逻辑）。
 
-Run:
+## 评估与校准
+
+准备验证集 CSV 字段：
+- `y_true`（0/1）
+- `y_score`（0~1）
+
+运行评估：
 
 ```bash
 python ai-service/scripts/evaluate_predictions.py --csv .\your_val.csv --thr-sens 0.30 --thr-spec 0.70 --out .\eval_report.json
 ```
 
-Report includes:
-
+输出指标包括：
 - AUROC
-- ECE (10 bins)
-- High-sensitivity operating point metrics
-- High-specificity operating point metrics
+- ECE（10 bins）
+- 高敏工作点指标
+- 高特工作点指标
 
-### Fastest Path (Use One Command)
+### 最短路径（只看这个）
 
-If you just want the best-practice training pipeline without tuning dozens of flags, run:
+如果你只想先跑通一版模型，现在只需要 **一个命令**：
 
 ```bash
 npm run train:best
 ```
 
-Default flow:
+默认会执行：离线缩放(512) -> 训练(最佳实践参数)。
+训练时会保存每轮权重到 `ai-service/models/epochs/epoch_*.pt`，方便直接拿 `epoch_3.pt` 做推理对比。
+脚本会先做 CUDA 预检（打印 `torch/cuda` 信息），若当前 Python 不是 GPU 版 PyTorch，会直接失败并停止后续步骤。
 
-- optional offline resize to 512
-- train with best-practice defaults
-- CUDA preflight first (prints `torch/cuda` info); if CUDA is unavailable in current Python env, script fails fast.
-
-Optional flags:
+可选参数示例（导出 ONNX 并重建 AI 服务）：
 
 ```bash
 npm run train:best -- -ExportOnnx -RebuildAi
+```
+
+你仍然可以按需覆盖数据集路径：
+
+```bash
 npm run train:best -- -DatasetRoot "E:\datasets\ChestXray-NIHCC" -ResizedRoot "E:\datasets\ChestXray-NIHCC-512"
+```
+
+如果你不想缩放，直接用原数据训练：
+
+```bash
 npm run train:best -- -SkipResize -ResizedRoot "E:\datasets\ChestXray-NIHCC"
 ```
 
-Below is the equivalent manual flow (reference only).
+下面是等价的手动 3 步（仅供参考）：
 
-## Clinical Evidence And Ops Readiness
-
-### Why this was added
-
-- To reduce "clinical evidence不足": every validation run can be persisted with metrics and approvals.
-- To reduce "production ops不足": readiness probe and incident tracking are available for admin operations.
-
-### New backend capabilities
-
-- Prisma model: `clinical_evidence_runs`
-  - Tracks model version, dataset, sample/site size, AUROC/sensitivity/specificity, calibration/threshold metadata, regulatory status, stage recommendation.
-- Prisma model: `ops_incidents`
-  - Tracks incident severity (`P0~P3`), source, status (`OPEN/ACKNOWLEDGED/RESOLVED`), owner and timestamps.
-- tRPC router: `ops`
-  - `ops.readiness`: DB + AI liveness/readiness + latest evidence gate result.
-  - `ops.dashboard`: latest evidence summary + open incidents + open P0/P1 incidents.
-  - `ops.listEvidence` / `ops.createEvidence`
-  - `ops.listIncidents` / `ops.createIncident` / `ops.transitionIncident`
-- HTTP endpoints:
-  - `GET /api/health`: app + DB health.
-  - `GET /api/ready`: readiness for DB and AI service.
-
-### Admin page updates
-
-`/dashboard/admin` now shows:
-
-- System readiness (DB/AI)
-- Clinical evidence gate PASS/NOT PASS
-- Open P0/P1 incidents
-- Recent incident list
-
-### Required DB migration
-
-After pulling latest code, run:
-
-```bash
-npx prisma generate
-npx prisma migrate dev --name add_clinical_evidence_and_ops
-```
-
-## Clinically-Oriented Parameter Tuning
-
-Use validation data to derive calibration temperature and operating points instead of hardcoding.
-
-Input CSV format:
-
-- `task` in `pneumonia` or `lesion`
-- `y_true` in `0/1`
-- `y_score` in `0~1`
-- optional `y_logit`
-
-Run:
-
-```bash
-python ai-service/scripts/derive_clinical_config.py --csv .\clinical_val.csv --target-sens 0.95 --target-spec 0.90 --out .\ai-service\models\clinical_config.json
-```
-
-Then restart AI service:
-
-```bash
-docker compose up -d --build ai-service
-```
-
-Service will auto-load `AI_CLINICAL_CONFIG_PATH` (default `/app/models/clinical_config.json`).
-Check `/health` for:
-
-- `taskThresholds`
-- `clinicalConfigSource`
-
-### Clinical deployment gate
-
-The service reads `AI_CLINICAL_GOVERNANCE_PATH` (default `/app/models/clinical_governance.json`).
-
-- If governance file is missing/invalid, stage stays `RESEARCH_ONLY`.
-- To move to decision-support stages, provide approved governance evidence.
-- Stage is exposed via `/health` and `/predict` (`clinicalStage`).
-
-Template:
-
-- `ai-service/models/clinical_governance.example.json`
-
-### Lesion localization upgrade path
-
-- If `AI_DETECTOR_MODEL_PATH` exists (default `/app/models/cxr_detector.onnx`), service uses detector ONNX outputs for regions.
-- Supported detector output styles:
-  - `xyxy + score + class`
-  - YOLO-like `cx,cy,w,h + class_probs`
-- If detector model is absent, no regions are returned (or optional heuristic fallback if explicitly enabled).
-
-### Detector output self-check (recommended before deployment)
-
-```bash
-python ai-service/scripts/check_detector_onnx.py --model ../models/cxr_detector.onnx --size 640
-```
-
-This script verifies:
-
-- ONNX input/output tensor metadata
-- Runtime output shape with a dummy tensor
-- Whether the output layout is compatible with current decoder logic
-
-### Detector manifest and hash pinning (recommended)
-
-Generate profile + sha256:
-
-```bash
-python ai-service/scripts/generate_detector_manifest.py --model .\ai-service\models\cxr_detector.onnx --profile-out .\ai-service\models\detector_profile.json --sha-out .\ai-service\models\detector.sha256 --decoder-format auto --input-channels 1
-```
-
-Then set in `.env`:
-
-- `AI_DETECTOR_PROFILE_PATH=/app/models/detector_profile.json`
-- `AI_DETECTOR_SHA256=<content of detector.sha256>`
-
-Startup will fail if model hash mismatches expected hash.
-
-### Reproducibility check (same image, repeated inference)
-
-```bash
-python ai-service/scripts/check_detector_reproducibility.py --model .\ai-service\models\cxr_detector.onnx --image .\public\uploads\your_test_image.png --runs 20 --size 640 --out .\ai-service\models\repro_report.json
-```
-
-The script exits with non-zero code if max score/box drift exceeds configured eps.
-
-### Train with NIH ChestXray14 (Google-hosted NIH dataset)
-
-Dataset source you provided:
-
-- `https://nihcc.app.box.com/v/ChestXray-NIHCC`
-
-Expected local layout (after download/extract):
-
-- `Data_Entry_2017.csv`
-- image files under one or more subfolders (script will recursively scan)
-
-Install training dependencies (outside Docker, local Python):
-
-```bash
-python -m pip install -r ai-service/requirements-train.txt
-```
-
-Optional: automated download + integrity check script
-
-```bash
-python ai-service/scripts/prepare_nih_chestxray14.py --dataset-root "E:\datasets\ChestXray-NIHCC" --download --extract --verify --report "E:\datasets\ChestXray-NIHCC\nih_integrity_report.json"
-```
-
-Notes:
-
-- Download supports resume and stores archives in `dataset-root/downloads`.
-- Extraction writes images into `dataset-root/images`.
-- Verification checks archive readability and CSV/image coverage.
-
-Manual equivalent (same as `npm run train:best`):
-
-1. Optional resize
+1. 可选：先把 1024 原图离线缩放（建议，能明显提速）
 
 ```bash
 python ai-service/scripts/prepare_nih_resized_dataset.py --dataset-root "E:\datasets\ChestXray-NIHCC" --output-root "E:\datasets\ChestXray-NIHCC-512" --size 512 --quality 90 --workers 16 --skip-existing
 ```
 
-2. Train
+2. 训练（新手推荐这一条）
 
 ```bash
 python -c "import torch; print(torch.__version__, torch.version.cuda, torch.cuda.is_available(), torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU')"
 python ai-service/scripts/train_nih_multitask.py --dataset-root "E:\datasets\ChestXray-NIHCC-512" --split-mode nih_official --backbone efficientnet_v2_s --image-size 320 --epochs 8 --batch-size 64 --amp --num-workers 16 --prefetch-factor 4 --output-dir "ai-service/models"
 ```
 
-3. Export + deploy
+提速建议（默认 `batch_size=32`，这里已提升到 `64`）：
+- 如果显存还有余量，可继续尝试 `96` 或 `128`。
+- 如果出现显存不足（OOM），回退到 `48` 或 `32`。
+- 训练时用 `nvidia-smi -l 1` 观察 `GPU-Util`。
+- 若 CPU 接近满载但 GPU 利用率不高，说明数据加载可能是瓶颈，可优先：
+  - 提高 `--num-workers`（如 `12~16`）
+  - 保持 `--prefetch-factor 4`
+  - 使用离线缩放后的数据集（如 `ChestXray-NIHCC-512`）
+
+3. 导出 ONNX 并部署
 
 ```bash
 python ai-service/scripts/export_trained_multitask_to_onnx.py --checkpoint "ai-service/models/nih_multitask_efficientnet_v2_s_best.pt" --output "../models/cxr_multitask.onnx" --input-size 320
 docker compose up -d --build ai-service
 ```
 
-### Startup gate (auto fail-fast)
+说明：
+- 如果你没做第 1 步，把第 2 步里的 `--dataset-root` 改回 `E:\datasets\ChestXray-NIHCC` 即可。
+- 其余章节都是“提分优化项”，不是必须。
 
-The AI service now performs detector compatibility self-check at startup.
+## 临床证据与运维就绪
 
-- `AI_ENFORCE_DETECTOR_STARTUP_CHECK=true` (default): if detector output is incompatible, service startup fails.
-- `AI_ENFORCE_DETECTOR_STARTUP_CHECK=false`: service starts but detector is disabled.
+- `clinical_evidence_runs`：记录验证数据集、样本量、多中心站点数、AUROC/敏感度/特异度、审批信息
+- `ops_incidents`：记录 P0~P3 事件、状态流转、责任人
+- 管理后台可查看：
+  - 系统就绪状态（DB/AI）
+  - 临床证据门禁是否通过
+  - P0/P1 未关闭事件数
 
-Check gate status in `/health`:
+必要迁移命令：
 
-- `detectorStartupCheckPassed`
-- `detectorStartupCheckMessage`
+```bash
+npx prisma generate
+npx prisma migrate dev --name add_clinical_evidence_and_ops
+```
 
-### Governance gate (clinical stage guard)
+## 安全与访问规则
 
-The service enforces governance requirements before allowing decision-support stages.
+- 公共注册仅允许 `PATIENT`
+- 患者仅可访问自己的影像/检测/报告
+- 禁止硬删除影像（保障审计可追溯）
+- 上传文件名由服务端生成
+- 默认限制 AI 上传大小（10MB）
+- 生产环境必须设置非默认 `NEXTAUTH_SECRET`
 
-Config:
-
-- `AI_ENFORCE_GOVERNANCE_GATE=true`
-- `AI_GOV_MIN_SITE_COUNT=2`
-- `AI_GOV_MIN_AUROC=0.90`
-- `AI_GOV_MIN_SENSITIVITY=0.90`
-- `AI_GOV_MIN_SPECIFICITY=0.85`
-
-Behavior:
-
-- If `deploymentStage=RESEARCH_ONLY`, gate always passes.
-- If `deploymentStage=PILOT_DECISION_SUPPORT` or `CLINICAL_DECISION_SUPPORT`, gate checks external validation metrics.
-- For `CLINICAL_DECISION_SUPPORT`, regulatory status must be one of `APPROVED/CLEARED/CERTIFIED`.
-
-Health endpoint fields:
-
-- `governanceGatePassed`
-- `governanceGateMessage`
-- `governanceCriteria`
-
-## Security and Access Rules
-
-- Public registration allows `PATIENT` only.
-- Patient can only access own images/detections/reports.
-- Hard delete of images is disabled (audit integrity).
-- Upload filename is server-generated (`timestamp + uuid + safe extension`).
-- AI upload max size is enforced (default 10MB).
-- Non-local production deployment requires non-default `NEXTAUTH_SECRET`.
-
-## Main Commands
+## 常用命令
 
 ```bash
 npm run dev
@@ -497,21 +311,15 @@ docker compose up -d
 docker compose logs -f ai-service
 ```
 
-## Key Paths
+## 关键路径
 
-- `app/` Next.js pages and API routes
-- `server/` tRPC routers and compliance logic
-- `prisma/schema.prisma` data models
-- `ai-service/app/main.py` AI inference service
-- `ai-service/scripts/` model export and evaluation scripts
+- `app/`：Next.js 页面与 API
+- `server/`：tRPC 路由与服务端逻辑
+- `prisma/schema.prisma`：数据库模型
+- `ai-service/app/main.py`：AI 推理服务
+- `ai-service/scripts/`：模型导出与评估脚本
 
-## Notes
+## 说明
 
-- This system is for research/decision support, not standalone clinical diagnosis.
-- For full setup details and troubleshooting, see `SETUP.md`.
-
-演示账号
-
-* **patient.demo@xray-ai.local** / **Patient#2026**
-* **doctor.demo@xray-ai.local** / **Doctor#2026**
-* **admin.demo@xray-ai.local** / **Admin#2026**
+- 当前系统定位为研究/辅助筛查，不可替代临床最终诊断。
+- 详细环境搭建与排障请查看 `SETUP.md` 或 `SETUP.zh-CN.md`。

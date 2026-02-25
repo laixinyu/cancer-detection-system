@@ -1,7 +1,7 @@
 package main
 
-// File: cmd/server/observability_middleware.go
-// Purpose: Gateway handlers, middleware, and wiring for external HTTP APIs.
+// 文件： cmd/server/observability_middleware.go
+// 用途：网关的处理器、中间件与对外 HTTP API 路由装配。
 
 import (
 	"context"
@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"cancer-detection-backend/internal/observability"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -27,6 +29,8 @@ func requestIDMiddleware() gin.HandlerFunc {
 			reqID = uuid.NewString()
 		}
 		c.Set("request_id", reqID)
+		c.Request.Header.Set(requestIDHeader, reqID)
+		c.Request = c.Request.WithContext(observability.WithRequestID(c.Request.Context(), reqID))
 		c.Writer.Header().Set(requestIDHeader, reqID)
 		c.Next()
 	}

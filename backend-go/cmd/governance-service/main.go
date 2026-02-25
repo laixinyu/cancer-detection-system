@@ -1,7 +1,7 @@
 package main
 
-// File: cmd/governance-service/main.go
-// Purpose: Governance microservice entrypoint and audit/analytics/ops handlers.
+// 文件： cmd/governance-service/main.go
+// 用途：治理微服务入口与审计/分析/运维处理逻辑。
 
 import (
 	"context"

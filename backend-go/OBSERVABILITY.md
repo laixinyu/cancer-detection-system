@@ -1,36 +1,37 @@
-# Backend Observability Baseline
+# 后端可观测性基线
 
-## What is implemented
+## 已实现能力
 
-- Structured JSON access logs (request id, route, status, latency, user id, client ip).
-- Request correlation id middleware (`X-Request-Id`).
-- OpenTelemetry tracing (OTLP HTTP exporter, configurable).
-- gRPC tracing interceptors:
-  - client-side injection in gateway -> microservice calls
-  - server-side extraction in detection/report/governance services
-- Metrics endpoint: `GET /metrics` (Prometheus text format).
-- Inbound rate limiting and outbound circuit breaker/rate limiting for downstream protection.
-- Built-in alert events in logs for:
+- 结构化 JSON 访问日志（`request_id`、路由、状态码、耗时、用户 ID、客户端 IP）。
+- 请求关联 ID 中间件（`X-Request-Id`）。
+- OpenTelemetry 链路追踪（OTLP HTTP 导出，可配置）。
+- gRPC 追踪拦截器：
+  - 网关客户端侧注入 trace context
+  - detection/report/governance 服务端提取 trace context
+  - 通过 gRPC metadata 透传 `x-request-id` 以便日志关联
+- 指标接口：`GET /metrics`（Prometheus 文本格式）。
+- 入站限流与出站熔断/限流（保护下游依赖）。
+- 内置告警日志事件：
   - HTTP `5xx`
-  - slow requests (`ALERT_SLOW_REQUEST_MS`, default `2000`)
-  - AI call failures (`AI_UNREACHABLE`, `AI_BAD_STATUS`, `AI_INVALID_PAYLOAD`)
-  - readiness failure (`READINESS_FAILED`)
+  - 慢请求（`ALERT_SLOW_REQUEST_MS`，默认 `2000`）
+  - AI 调用失败（`AI_UNREACHABLE`、`AI_BAD_STATUS`、`AI_INVALID_PAYLOAD`）
+  - 就绪性失败（`READINESS_FAILED`）
 
-## Key environment variables
+## 关键环境变量
 
-- `LOG_LEVEL` (`debug|info|warn|error`, default `info`)
-- `ALERT_SLOW_REQUEST_MS` (default `2000`)
-- `OTEL_ENABLED` (`true|false`)
-- `OTEL_EXPORTER_OTLP_ENDPOINT` (e.g. `localhost:4318`)
-- `OTEL_SERVICE_NAME` (default `cancer-detection-gateway`)
-- `OTEL_TRACE_SAMPLE_RATIO` (default `1.0`)
+- `LOG_LEVEL`（`debug|info|warn|error`，默认 `info`）
+- `ALERT_SLOW_REQUEST_MS`（默认 `2000`）
+- `OTEL_ENABLED`（`true|false`）
+- `OTEL_EXPORTER_OTLP_ENDPOINT`（例如 `localhost:4318`）
+- `OTEL_SERVICE_NAME`（默认 `cancer-detection-gateway`）
+- `OTEL_TRACE_SAMPLE_RATIO`（默认 `1.0`）
 - `INBOUND_RATE_LIMIT_RPS` / `INBOUND_RATE_LIMIT_BURST`
 - `AI_OUTBOUND_RATE_LIMIT_RPS` / `AI_OUTBOUND_RATE_LIMIT_BURST`
 - `UPSTREAM_BREAKER_FAIL_THRESHOLD`
 - `UPSTREAM_BREAKER_OPEN_SECONDS`
 - `UPSTREAM_BREAKER_HALF_OPEN_CALLS`
 
-## Core metrics
+## 核心指标
 
 - `app_http_requests_total{method,route,status}`
 - `app_http_request_duration_millis_sum{method,route,status}`
@@ -38,15 +39,16 @@
 - `app_ai_requests_total`
 - `app_ai_failures_total`
 
-## Suggested alert rules (Prometheus)
+## 告警规则建议（Prometheus）
 
-- High 5xx ratio for 5m
-- P95 latency above SLO for 10m
-- AI failure rate above threshold for 5m
-- `/ready` not ready for continuous 3 checks
+- 5 分钟窗口内 `5xx` 比例过高
+- 10 分钟窗口内 P95 延迟高于 SLO
+- 5 分钟窗口内 AI 失败率高于阈值
+- `/ready` 连续 3 次检查不通过
 
-## Log Correlation Fields
+## 日志关联字段
 
-- `request_id`: generated or forwarded request id.
-- `trace_id`: OpenTelemetry trace id for distributed tracing.
-- `span_id`: current request span id.
+- `request_id`：系统生成或上游透传的请求 ID。
+- `trace_id`：分布式链路追踪的 Trace ID。
+- `span_id`：当前请求 Span ID。
+- gRPC 服务端日志包含 `request_id + trace_id + span_id + method + latency_ms`。

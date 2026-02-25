@@ -1,7 +1,7 @@
 package codec
 
-// File: internal/rpc/codec/jsoncodec.go
-// Purpose: Internal gRPC bridge contracts, codec, and HTTP bridge adapter.
+// 文件： internal/rpc/codec/jsoncodec.go
+// 用途：内部 gRPC 桥接协议、编解码器与 HTTP 适配器。
 
 import "encoding/json"
 

@@ -1,7 +1,7 @@
 package main
 
-// File: cmd/server/types.go
-// Purpose: Gateway handlers, middleware, and wiring for external HTTP APIs.
+// 文件： cmd/server/types.go
+// 用途：网关的处理器、中间件与对外 HTTP API 路由装配。
 
 import (
 	"log/slog"
