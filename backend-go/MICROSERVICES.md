@@ -10,29 +10,30 @@
 ## 后端架构图
 
 ```mermaid
-flowchart LR
-  FE[Next.js 前端] --> GW[API 网关 cmd/server]
+graph LR
+  FE[前端 Next.js] --> GW[网关 cmd_server]
 
-  subgraph Gateway
-    GW --> MW[横切中间件\nCORS JWT 超时 限流 追踪 日志]
-    MW --> RT[路由分发 /api/v1/*]
+  subgraph 网关
+    GW --> MW[中间件 CORS JWT 超时 限流 追踪 日志]
+    MW --> RT[路由分发 api_v1]
     RT --> AUTH[认证 上传 影像文件]
-    RT --> PX[代理到微服务]
-    AUTH --> RS[弹性保护\n熔断器 + 出站限流]
-    AUTH --> OBS[可观测性\n指标 + Trace + 请求ID]
+    RT --> PX[微服务代理]
+    AUTH --> RS[弹性 熔断与出站限流]
+    AUTH --> OBS[观测 指标 Trace 请求ID]
   end
 
-  PX --> DET[detection-service :8081]
-  PX --> REP[report-service :8082]
-  PX --> GOV[governance-service :8083]
+  PX --> DET[检测服务 8081]
+  PX --> REP[报告服务 8082]
+  PX --> GOV[治理服务 8083]
 
-  AUTH --> PG[(PostgreSQL)]
-  AUTH --> CACHE[(缓存：memory/redis)]
+  AUTH --> PG[PostgreSQL]
   DET --> PG
   REP --> PG
   GOV --> PG
+  DET --> CACHE[缓存 memory 或 redis]
+  REP --> CACHE
   GOV --> CACHE
-  AUTH --> AI[AI 服务 FastAPI /predict]
+  AUTH --> AI[AI 服务 FastAPI]
 ```
 
 ## AI 调用边界
@@ -45,15 +46,18 @@ flowchart LR
 ## 分层设计（单服务）
 
 ```mermaid
-flowchart TB
-  H[handler\nGin 路由 + DTO + 鉴权]
-  S[service\n业务规则 + 事务边界]
-  R[repository\nGORM 数据访问]
-  D[domain\ninternal/domain 领域模型]
-  DB[(PostgreSQL)]
-  C[(Cache)]
+graph TB
+  H[handler Gin 路由 DTO 鉴权]
+  S[service 业务规则 事务边界]
+  R[repository GORM 数据访问]
+  D[domain 领域模型]
+  DB[PostgreSQL]
+  C[Cache]
 
-  H --> S --> R --> D --> DB
+  H --> S
+  S --> R
+  R --> D
+  D --> DB
   S --> C
 ```
 
@@ -74,6 +78,14 @@ flowchart TB
   - `INBOUND_RATE_LIMIT_RPS`, `INBOUND_RATE_LIMIT_BURST`
   - `AI_OUTBOUND_RATE_LIMIT_RPS`, `AI_OUTBOUND_RATE_LIMIT_BURST`
   - `UPSTREAM_BREAKER_FAIL_THRESHOLD`, `UPSTREAM_BREAKER_OPEN_SECONDS`, `UPSTREAM_BREAKER_HALF_OPEN_CALLS`
+
+## 缓存策略
+
+- 缓存后端由 `CACHE_BACKEND` 决定（`redis|memory|noop`）。
+- 生产环境默认缓存后端为 Redis：
+  - `APP_ENV=production|prod` 且未设置 `CACHE_BACKEND` 时，默认 `redis`。
+- 缓存只用于读多写少的查询接口（如 detection/report/audit/analytics/ops 列表或概览）。
+- 认证、上传、AI 调用链路不走缓存，保证强一致与安全边界。
 
 ## 追踪与日志关联
 

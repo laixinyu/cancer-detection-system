@@ -12,6 +12,7 @@ import (
 )
 
 type Config struct {
+	AppEnv                string
 	Port                  string
 	DatabaseURL           string
 	JWTSecret             string
@@ -23,6 +24,9 @@ type Config struct {
 	ReportServiceGRPC     string
 	GovernanceServiceGRPC string
 	CacheBackend          string
+	RedisAddr             string
+	RedisPassword         string
+	RedisDB               int
 	UploadDir             string
 	UploadPublicPrefix    string
 	ReadTimeout           time.Duration
@@ -56,7 +60,18 @@ func Load() (*Config, error) {
 		jwtSecret = "change-me-in-production"
 	}
 
+	appEnv := strings.ToLower(strings.TrimSpace(envOr("APP_ENV", "development")))
+	cacheBackend := strings.ToLower(strings.TrimSpace(os.Getenv("CACHE_BACKEND")))
+	if cacheBackend == "" {
+		if appEnv == "production" || appEnv == "prod" {
+			cacheBackend = "redis"
+		} else {
+			cacheBackend = "memory"
+		}
+	}
+
 	cfg := &Config{
+		AppEnv:                appEnv,
 		Port:                  envOr("PORT", "8080"),
 		DatabaseURL:           dsn,
 		JWTSecret:             jwtSecret,
@@ -67,7 +82,10 @@ func Load() (*Config, error) {
 		DetectionServiceGRPC:  strings.TrimSpace(envOr("DETECTION_SERVICE_GRPC_ADDR", "")),
 		ReportServiceGRPC:     strings.TrimSpace(envOr("REPORT_SERVICE_GRPC_ADDR", "")),
 		GovernanceServiceGRPC: strings.TrimSpace(envOr("GOVERNANCE_SERVICE_GRPC_ADDR", "")),
-		CacheBackend:          strings.ToLower(envOr("CACHE_BACKEND", "memory")),
+		CacheBackend:          cacheBackend,
+		RedisAddr:             envOr("REDIS_ADDR", "localhost:6379"),
+		RedisPassword:         envOr("REDIS_PASSWORD", ""),
+		RedisDB:               parseNonNegativeIntEnv("REDIS_DB", 0),
 		UploadDir:             envOr("UPLOAD_DIR", "public/uploads"),
 		UploadPublicPrefix:    strings.TrimRight(envOr("UPLOAD_PUBLIC_PREFIX", "/uploads"), "/"),
 		ReadTimeout:           15 * time.Second,
@@ -119,6 +137,18 @@ func parseIntEnv(key string, fallback int) int {
 	}
 	n, err := strconv.Atoi(v)
 	if err != nil || n <= 0 {
+		return fallback
+	}
+	return n
+}
+
+func parseNonNegativeIntEnv(key string, fallback int) int {
+	v := strings.TrimSpace(os.Getenv(key))
+	if v == "" {
+		return fallback
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n < 0 {
 		return fallback
 	}
 	return n

@@ -59,8 +59,18 @@ func BuildGateway(ctx context.Context, cfg *config.Config) (*GatewayDependencies
 	switch strings.ToLower(strings.TrimSpace(cfg.CacheBackend)) {
 	case "none", "noop":
 		appCache = cache.NewNoop()
-	default:
+	case "redis":
+		rc, cacheErr := cache.NewRedis(cfg.RedisAddr, cfg.RedisPassword, cfg.RedisDB)
+		if cacheErr != nil {
+			db.Close()
+			return nil, fmt.Errorf("init redis cache: %w", cacheErr)
+		}
+		appCache = rc
+	case "memory":
 		appCache = cache.NewMemory()
+	default:
+		db.Close()
+		return nil, fmt.Errorf("unsupported CACHE_BACKEND: %s", cfg.CacheBackend)
 	}
 
 	opsSvc := service.NewOpsService(repository.NewGormOpsRepository(gdb))

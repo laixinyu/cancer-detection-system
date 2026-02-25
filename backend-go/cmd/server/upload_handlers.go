@@ -14,7 +14,6 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -32,12 +31,6 @@ func (a *app) listImages(c *gin.Context) {
 		return
 	}
 	limit := parseLimit(c, 20)
-	cacheKey := "image:list:v1:uid=" + claims.UserID + ":role=" + claims.Role + ":limit=" + strconv.Itoa(limit)
-	var cached map[string]any
-	if a.cacheGet(c, cacheKey, &cached) {
-		c.JSON(http.StatusOK, cached)
-		return
-	}
 
 	images, next, err := a.uploadService.ListImages(c.Request.Context(), claims.Role, claims.UserID, limit)
 	if err != nil {
@@ -77,7 +70,6 @@ func (a *app) listImages(c *gin.Context) {
 		nextCursor = *next
 	}
 	response := gin.H{"images": items, "nextCursor": nextCursor}
-	a.cacheSet(c, cacheKey, response, 15*time.Second)
 	c.JSON(http.StatusOK, response)
 }
 
@@ -185,7 +177,7 @@ func (a *app) uploadImage(c *gin.Context) {
 	if aiErr != nil {
 		_ = a.uploadService.MarkImageFailed(ctx, img.ID)
 		img.Status = "FAILED"
-		a.cacheInvalidatePrefixes(c, "image:list:", "detection:list:", "analytics:")
+		a.cacheInvalidatePrefixes(c, "detection:list:", "analytics:")
 		c.JSON(http.StatusBadGateway, gin.H{
 			"error":   "AI detection failed",
 			"details": aiErr.Error(),
@@ -221,7 +213,7 @@ func (a *app) uploadImage(c *gin.Context) {
 	if err := a.uploadService.CreateDetection(ctx, detection); err != nil {
 		_ = a.uploadService.MarkImageFailed(ctx, img.ID)
 		img.Status = "FAILED"
-		a.cacheInvalidatePrefixes(c, "image:list:", "detection:list:", "analytics:")
+		a.cacheInvalidatePrefixes(c, "detection:list:", "analytics:")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save detection"})
 		return
 	}
@@ -232,7 +224,7 @@ func (a *app) uploadImage(c *gin.Context) {
 	}
 	img.Status = "COMPLETED"
 	img.FilePath = "/api/images/" + img.ID + "/file"
-	a.cacheInvalidatePrefixes(c, "image:list:", "detection:list:", "report:list:", "analytics:")
+	a.cacheInvalidatePrefixes(c, "detection:list:", "report:list:", "analytics:")
 
 	c.JSON(http.StatusOK, gin.H{"success": true, "image": img})
 }

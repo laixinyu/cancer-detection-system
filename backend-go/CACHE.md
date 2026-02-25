@@ -4,14 +4,22 @@
 
 - 缓存抽象接口：`internal/cache/cache.go`
 - 内存 TTL 缓存：`internal/cache/memory.go`
+- Redis 缓存：`internal/cache/redis.go`
 - 空实现缓存（No-op）：`internal/cache/noop.go`
 - 通过环境变量选择运行时后端：
-  - `CACHE_BACKEND=memory`（默认）
+  - `CACHE_BACKEND=redis`
+  - `CACHE_BACKEND=memory`
   - `CACHE_BACKEND=noop`
+  - 默认策略：
+    - `APP_ENV=production|prod` 且未显式设置 `CACHE_BACKEND` 时，默认 `redis`
+    - 其他环境默认 `memory`
+  - Redis 参数：
+    - `REDIS_ADDR`（默认 `localhost:6379`）
+    - `REDIS_PASSWORD`（可空）
+    - `REDIS_DB`（默认 `0`）
 
 ## 已缓存接口
 
-- `GET /api/v1/images`
 - `GET /api/v1/detections`
 - `GET /api/v1/reports`
 - `GET /api/v1/audits`
@@ -24,14 +32,16 @@
 
 写操作会主动按前缀清理缓存，包含：
 
-- 影像上传 / 检测生成
 - 检测复核
 - 报告创建 / 更新
 - 审计日志写入
 - 运维证据创建
 - 运维事件创建 / 状态流转
 
-## Redis 扩展
+## 缓存边界
 
-当前缓存接口已支持扩展 Redis 适配器。  
-新增 `internal/cache/redis.go` 并实现 `cache.Cache` 后，可在 `newApp` 中根据 `CACHE_BACKEND=redis` 挂载。
+- 仅对读多写少、允许短 TTL 最终一致的查询接口启用缓存。
+- 以下强一致或安全敏感路径不启用缓存：
+  - 认证（登录、鉴权、权限校验）
+  - 上传与文件入库流程
+  - AI 推理调用链路（`/predict`）
