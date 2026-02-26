@@ -1,0 +1,11 @@
+{
+  "notify.hoursAgo": "{count}h ago",
+  "notify.imageStatus": "Image {status}",
+  "notify.justNow": "Just now",
+  "notify.markAllRead": "Mark all read",
+  "notify.minutesAgo": "{count}m ago",
+  "notify.none": "No notifications",
+  "notify.reportDraftUpdated": "Report Draft Updated",
+  "notify.reportFinalized": "Report Finalized",
+  "notify.unread": "{count} unread"
+}

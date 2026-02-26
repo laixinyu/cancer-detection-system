@@ -1,0 +1,15 @@
+{
+  "dashboard.highLesionRiskPending": "高病灶风险待审",
+  "dashboard.myImages": "我的影像",
+  "dashboard.noRecentActivity": "暂无最近活动",
+  "dashboard.pendingReviews": "待处理",
+  "dashboard.recentActivity": "最近活动",
+  "dashboard.reports": "报告",
+  "dashboard.reviewQueue": "待审队列",
+  "dashboard.startReview": "开始审阅",
+  "dashboard.todayReviews": "今日已审阅",
+  "dashboard.uploadNew": "上传新影像",
+  "dashboard.viewAll": "查看全部",
+  "dashboard.viewReports": "查看报告",
+  "dashboard.welcome": "欢迎，"
+}

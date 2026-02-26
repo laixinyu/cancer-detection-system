@@ -1,0 +1,22 @@
+{
+  "reports.aiAnalysis": "AI 分析",
+  "reports.clinicalDiagnosis": "临床诊断",
+  "reports.coverTitle": "医学影像报告",
+  "reports.empty": "暂无报告",
+  "reports.exportErrorDefault": "导出失败，请重试",
+  "reports.exportPdf": "导出 PDF",
+  "reports.exporting": "导出中...",
+  "reports.lesionProbability": "病灶概率：",
+  "reports.listTitle": "报告（{count}）",
+  "reports.loading": "正在加载报告...",
+  "reports.na": "无",
+  "reports.pageTitle": "医疗报告",
+  "reports.patientEmail": "邮箱：",
+  "reports.patientInfo": "患者信息",
+  "reports.patientName": "姓名：",
+  "reports.previewTitle": "报告预览",
+  "reports.reportDate": "报告日期：",
+  "reports.reportId": "报告ID：",
+  "reports.riskSuffix": "风险",
+  "reports.selectPrompt": "选择一份报告查看详情"
+}

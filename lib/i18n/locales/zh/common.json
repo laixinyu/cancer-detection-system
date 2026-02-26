@@ -1,0 +1,16 @@
+{
+  "common.back": "返回",
+  "common.cancel": "取消",
+  "common.language": "语言",
+  "common.loading": "加载中...",
+  "common.logout": "退出登录",
+  "common.noData": "暂无数据",
+  "common.notifications": "通知",
+  "common.reports": "报告",
+  "common.reset": "重置",
+  "common.review": "审阅",
+  "common.save": "保存",
+  "common.upload": "上传",
+  "lang.en": "英文",
+  "lang.zh": "中文"
+}

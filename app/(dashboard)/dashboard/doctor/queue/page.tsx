@@ -22,8 +22,7 @@ type Detection = {
 }
 
 export default function DoctorQueuePage() {
-  const { locale } = useI18n()
-  const isZh = locale === 'zh'
+  const { t } = useI18n()
   const { status, authFetch } = useAuth()
   const [filter, setFilter] = useState<'ALL' | 'HIGH' | 'MEDIUM' | 'LOW'>('ALL')
   const [isLoading, setIsLoading] = useState(true)
@@ -69,9 +68,9 @@ export default function DoctorQueuePage() {
   }
 
   const getRiskLevel = (probability: number) => {
-    if (probability < 0.3) return { text: isZh ? '低风险' : 'Low Risk', color: 'text-green-600 bg-green-100', priority: isZh ? '低' : 'Low' }
-    if (probability < 0.7) return { text: isZh ? '中风险' : 'Medium Risk', color: 'text-yellow-600 bg-yellow-100', priority: isZh ? '中' : 'Medium' }
-    return { text: isZh ? '高风险' : 'High Risk', color: 'text-red-600 bg-red-100', priority: isZh ? '高' : 'High' }
+    if (probability < 0.3) return { text: t('risk.lowLabel'), color: 'text-green-600 bg-green-100', priority: t('risk.low') }
+    if (probability < 0.7) return { text: t('risk.mediumLabel'), color: 'text-yellow-600 bg-yellow-100', priority: t('risk.medium') }
+    return { text: t('risk.highLabel'), color: 'text-red-600 bg-red-100', priority: t('risk.high') }
   }
 
   const getPriorityBucket = useCallback((detection: Detection) => {
@@ -102,21 +101,21 @@ export default function DoctorQueuePage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold text-gray-900">{isZh ? '审阅队列' : 'Review Queue'}</h1>
+        <h1 className="text-3xl font-bold text-gray-900">{t('doctorQueue.title')}</h1>
       </div>
 
       <Card><CardContent className="pt-6"><div className="flex gap-2">
-        <Button variant={filter === 'ALL' ? 'default' : 'outline'} size="sm" onClick={() => setFilter('ALL')}>{isZh ? '全部' : 'All'} ({stats.all})</Button>
-        <Button variant={filter === 'HIGH' ? 'default' : 'outline'} size="sm" onClick={() => setFilter('HIGH')}>{isZh ? '高优先级' : 'High Priority'} ({stats.high})</Button>
-        <Button variant={filter === 'MEDIUM' ? 'default' : 'outline'} size="sm" onClick={() => setFilter('MEDIUM')}>{isZh ? '中优先级' : 'Medium Priority'} ({stats.medium})</Button>
-        <Button variant={filter === 'LOW' ? 'default' : 'outline'} size="sm" onClick={() => setFilter('LOW')}>{isZh ? '低优先级' : 'Low Priority'} ({stats.low})</Button>
+        <Button variant={filter === 'ALL' ? 'default' : 'outline'} size="sm" onClick={() => setFilter('ALL')}>{t('doctorQueue.filterAll')} ({stats.all})</Button>
+        <Button variant={filter === 'HIGH' ? 'default' : 'outline'} size="sm" onClick={() => setFilter('HIGH')}>{t('doctorQueue.filterHigh')} ({stats.high})</Button>
+        <Button variant={filter === 'MEDIUM' ? 'default' : 'outline'} size="sm" onClick={() => setFilter('MEDIUM')}>{t('doctorQueue.filterMedium')} ({stats.medium})</Button>
+        <Button variant={filter === 'LOW' ? 'default' : 'outline'} size="sm" onClick={() => setFilter('LOW')}>{t('doctorQueue.filterLow')} ({stats.low})</Button>
       </div></CardContent></Card>
 
-      {isLoading && <Card><CardContent className="py-8 text-center text-gray-500">{isZh ? '正在加载队列...' : 'Loading queue...'}</CardContent></Card>}
+      {isLoading && <Card><CardContent className="py-8 text-center text-gray-500">{t('doctorQueue.loading')}</CardContent></Card>}
       {error && <Card><CardContent className="py-8 text-center text-red-600">{error}</CardContent></Card>}
 
       {!isLoading && !error && visibleDetections.length === 0 ? (
-        <Card><CardContent className="py-12"><div className="text-center"><div className="text-6xl mb-4">✅</div><p className="text-gray-500">{isZh ? '暂无待审病例' : 'No cases pending review'}</p></div></CardContent></Card>
+        <Card><CardContent className="py-12"><div className="text-center"><div className="text-6xl mb-4">✅</div><p className="text-gray-500">{t('doctorQueue.empty')}</p></div></CardContent></Card>
       ) : (
         <div className="space-y-4">
           {visibleDetections.map((detection) => {
@@ -129,9 +128,9 @@ export default function DoctorQueuePage() {
                     <div className="flex-1">
                       <div className="flex items-start justify-between">
                         <div>
-                          <h3 className="font-semibold text-lg">{detection.image.patient.user.name ?? (isZh ? '未知患者' : 'Unknown Patient')}</h3>
+                          <h3 className="font-semibold text-lg">{detection.image.patient.user.name ?? t('doctorQueue.unknownPatient')}</h3>
                           <p className="text-sm text-gray-600">{detection.image.originalName}</p>
-                          <p className="text-xs text-gray-500 mt-1">{isZh ? '上传时间：' : 'Uploaded: '}{formatTime(detection.image.createdAt)}</p>
+                          <p className="text-xs text-gray-500 mt-1">{t('doctorQueue.uploadedAt')}{formatTime(detection.image.createdAt)}</p>
                         </div>
                         <div className="text-right">
                           <div className={`text-2xl font-bold ${risk.color.split(' ')[0]}`}>{(detection.cancerProbability * 100).toFixed(1)}%</div>
@@ -139,10 +138,10 @@ export default function DoctorQueuePage() {
                         </div>
                       </div>
                       <div className="mt-3 pt-3 border-t flex items-center justify-between">
-                        <div className="text-xs text-gray-500">{isZh ? '模型：' : 'Model: '}{detection.modelVersion} • {isZh ? '状态：' : 'Status: '}{detection.status}</div>
+                        <div className="text-xs text-gray-500">{t('doctorQueue.model')}{detection.modelVersion} • {t('doctorQueue.status')}{detection.status}</div>
                         <div className="flex gap-2">
-                          <Link href={`/dashboard/doctor/review/${detection.id}`}><Button>{isZh ? '开始审阅' : 'Start Review'}</Button></Link>
-                          <Link href={`/dashboard/doctor/review/${detection.id}`}><Button variant="outline">{isZh ? '查看详情' : 'View Details'}</Button></Link>
+                          <Link href={`/dashboard/doctor/review/${detection.id}`}><Button>{t('doctorQueue.startReview')}</Button></Link>
+                          <Link href={`/dashboard/doctor/review/${detection.id}`}><Button variant="outline">{t('doctorQueue.viewDetails')}</Button></Link>
                         </div>
                       </div>
                     </div>

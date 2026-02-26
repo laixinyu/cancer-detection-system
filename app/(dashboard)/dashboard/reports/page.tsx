@@ -44,8 +44,7 @@ function normalizeReportContent(content: unknown): ReportContent {
 }
 
 export default function ReportsPage() {
-  const { locale } = useI18n()
-  const isZh = locale === 'zh'
+  const { locale, t } = useI18n()
   const { status, authFetch } = useAuth()
   const [selectedReportId, setSelectedReportId] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -108,32 +107,32 @@ export default function ReportsPage() {
       }
       pdf.save(`report_${selectedReport.id}_${Date.now()}.pdf`)
     } catch (e) {
-      setExportError(e instanceof Error ? e.message : isZh ? '导出失败，请重试' : 'Export failed, please retry')
+      setExportError(e instanceof Error ? e.message : t('reports.exportErrorDefault'))
     } finally {
       setExportingPDF(false)
     }
   }
 
   const getRiskBadge = (probability: number) => {
-    if (probability < 0.3) return { text: isZh ? '低' : 'Low', class: 'bg-green-100 text-green-700' }
-    if (probability < 0.7) return { text: isZh ? '中' : 'Medium', class: 'bg-yellow-100 text-yellow-700' }
-    return { text: isZh ? '高' : 'High', class: 'bg-red-100 text-red-700' }
+    if (probability < 0.3) return { text: t('risk.low'), class: 'bg-green-100 text-green-700' }
+    if (probability < 0.7) return { text: t('risk.medium'), class: 'bg-yellow-100 text-yellow-700' }
+    return { text: t('risk.high'), class: 'bg-red-100 text-red-700' }
   }
 
   return (
     <div className="space-y-6">
-      <div><h1 className="text-3xl font-bold text-gray-900">{isZh ? '医疗报告' : 'Medical Reports'}</h1></div>
+      <div><h1 className="text-3xl font-bold text-gray-900">{t('reports.pageTitle')}</h1></div>
       <div className="grid md:grid-cols-2 gap-6">
-        <Card><CardHeader><CardTitle>{isZh ? `报告（${reports.length}）` : `Reports (${reports.length})`}</CardTitle></CardHeader><CardContent>
-          {isLoading && <div className="text-center py-8 text-gray-500">{isZh ? '正在加载报告...' : 'Loading reports...'}</div>}
+        <Card><CardHeader><CardTitle>{t('reports.listTitle', { count: reports.length })}</CardTitle></CardHeader><CardContent>
+          {isLoading && <div className="text-center py-8 text-gray-500">{t('reports.loading')}</div>}
           {error && <div className="text-center py-8 text-red-600">{error}</div>}
-          {!isLoading && !error && reports.length === 0 && <div className="text-center py-8 text-gray-500">{isZh ? '暂无报告' : 'No reports available'}</div>}
+          {!isLoading && !error && reports.length === 0 && <div className="text-center py-8 text-gray-500">{t('reports.empty')}</div>}
           {!isLoading && !error && reports.length > 0 && <div className="space-y-3">{reports.map((report) => {
             const risk = getRiskBadge(report.detection.cancerProbability)
             return (
               <button key={report.id} type="button" className={`w-full text-left p-4 border rounded-lg transition-colors ${selectedReport?.id === report.id ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`} onClick={() => setSelectedReportId(report.id)}>
                 <div className="flex items-start justify-between mb-2"><div><h3 className="font-semibold">{report.patient.user.name}</h3><p className="text-sm text-gray-600">{report.detection.image.originalName}</p></div><span className={`px-2 py-1 rounded text-xs font-medium ${report.status === 'FINALIZED' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'}`}>{report.status}</span></div>
-                <div className="flex items-center gap-4 text-sm text-gray-600"><span>{report.doctor.name}</span><span>•</span><span>{formatDate(report.createdAt)}</span><span>•</span><span className={`px-2 py-0.5 rounded ${risk.class}`}>{risk.text}{isZh ? '风险' : ' Risk'}</span></div>
+                <div className="flex items-center gap-4 text-sm text-gray-600"><span>{report.doctor.name}</span><span>•</span><span>{formatDate(report.createdAt)}</span><span>•</span><span className={`px-2 py-0.5 rounded ${risk.class}`}>{risk.text}{t('reports.riskSuffix')}</span></div>
               </button>
             )
           })}</div>}
@@ -141,27 +140,27 @@ export default function ReportsPage() {
         <div>
           {selectedReport ? (
             <Card>
-              <CardHeader className="flex flex-row items-center justify-between"><CardTitle>{isZh ? '报告预览' : 'Report Preview'}</CardTitle><Button size="sm" onClick={exportToPDF} disabled={exportingPDF}>{exportingPDF ? (isZh ? '导出中...' : 'Exporting...') : isZh ? '导出 PDF' : 'Export PDF'}</Button></CardHeader>
+              <CardHeader className="flex flex-row items-center justify-between"><CardTitle>{t('reports.previewTitle')}</CardTitle><Button size="sm" onClick={exportToPDF} disabled={exportingPDF}>{exportingPDF ? t('reports.exporting') : t('reports.exportPdf')}</Button></CardHeader>
               <CardContent>
                 {exportError && <div className="mb-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{exportError}</div>}
                 <div ref={reportRef} className="bg-white p-8 space-y-6">
-                  <div className="text-center border-b pb-6"><h1 className="text-2xl font-bold text-blue-600">{isZh ? '医学影像报告' : 'MEDICAL IMAGING REPORT'}</h1></div>
-                  <div><h3 className="font-semibold text-lg mb-3">{isZh ? '患者信息' : 'Patient Information'}</h3><div className="grid grid-cols-2 gap-2 text-sm"><div><span className="text-gray-600">{isZh ? '姓名：' : 'Name:'}</span> <span className="font-medium">{selectedReport.patient.user.name}</span></div><div><span className="text-gray-600">{isZh ? '邮箱：' : 'Email:'}</span> <span className="font-medium">{selectedReport.patient.user.email}</span></div><div><span className="text-gray-600">{isZh ? '报告日期：' : 'Report Date:'}</span> <span className="font-medium">{formatDate(selectedReport.createdAt)}</span></div><div><span className="text-gray-600">{isZh ? '报告ID：' : 'Report ID:'}</span> <span className="font-medium">{selectedReport.id}</span></div></div></div>
+                  <div className="text-center border-b pb-6"><h1 className="text-2xl font-bold text-blue-600">{t('reports.coverTitle')}</h1></div>
+                  <div><h3 className="font-semibold text-lg mb-3">{t('reports.patientInfo')}</h3><div className="grid grid-cols-2 gap-2 text-sm"><div><span className="text-gray-600">{t('reports.patientName')}</span> <span className="font-medium">{selectedReport.patient.user.name}</span></div><div><span className="text-gray-600">{t('reports.patientEmail')}</span> <span className="font-medium">{selectedReport.patient.user.email}</span></div><div><span className="text-gray-600">{t('reports.reportDate')}</span> <span className="font-medium">{formatDate(selectedReport.createdAt)}</span></div><div><span className="text-gray-600">{t('reports.reportId')}</span> <span className="font-medium">{selectedReport.id}</span></div></div></div>
                   <div className="bg-gray-50 p-4 rounded">
-                    <h3 className="font-semibold text-lg mb-3">{isZh ? 'AI 分析' : 'AI Analysis'}</h3>
+                    <h3 className="font-semibold text-lg mb-3">{t('reports.aiAnalysis')}</h3>
                     <div className="text-sm space-y-2">
-                      <p><span className="text-gray-600">{isZh ? '癌症概率：' : 'Cancer Probability:'}</span> <span className="font-bold text-red-600">{(selectedReport.detection.cancerProbability * 100).toFixed(1)}%</span></p>
+                      <p><span className="text-gray-600">{t('reports.lesionProbability')}</span> <span className="font-bold text-red-600">{(selectedReport.detection.cancerProbability * 100).toFixed(1)}%</span></p>
                       {reportContent.screeningSummary?.infectionCoverage && (
-                        <div>{Object.entries(reportContent.screeningSummary.infectionCoverage).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([label, score]) => (<div key={label} className="text-xs flex items-center justify-between"><span>{getInfectionCoverageLabel(label, isZh)}</span><span className="font-medium">{(score * 100).toFixed(1)}%</span></div>))}</div>
+                        <div>{Object.entries(reportContent.screeningSummary.infectionCoverage).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([label, score]) => (<div key={label} className="text-xs flex items-center justify-between"><span>{getInfectionCoverageLabel(label, locale)}</span><span className="font-medium">{(score * 100).toFixed(1)}%</span></div>))}</div>
                       )}
                     </div>
                   </div>
-                  <div><h3 className="font-semibold text-lg mb-3">{isZh ? '临床诊断' : 'Clinical Diagnosis'}</h3><p className="text-sm">{reportContent.diagnosis ?? (isZh ? '无' : 'N/A')}</p></div>
+                  <div><h3 className="font-semibold text-lg mb-3">{t('reports.clinicalDiagnosis')}</h3><p className="text-sm">{reportContent.diagnosis ?? t('reports.na')}</p></div>
                 </div>
               </CardContent>
             </Card>
           ) : (
-            <Card><CardContent className="py-20"><div className="text-center text-gray-500"><div className="text-6xl mb-4">📋</div><p>{isZh ? '选择一份报告查看详情' : 'Select a report to view details'}</p></div></CardContent></Card>
+            <Card><CardContent className="py-20"><div className="text-center text-gray-500"><div className="text-6xl mb-4">📋</div><p>{t('reports.selectPrompt')}</p></div></CardContent></Card>
           )}
         </div>
       </div>

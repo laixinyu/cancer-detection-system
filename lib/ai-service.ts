@@ -9,6 +9,7 @@ export interface AiRegion {
 
 export interface AiDetectionResponse {
   modelVersion: string
+  lesionProbability: number
   cancerProbability: number
   regions: AiRegion[]
   labelScores?: Record<string, number>
@@ -98,16 +99,21 @@ export async function requestAiDetection(file: File): Promise<AiDetectionRespons
   const payload = (await response.json()) as Partial<AiDetectionResponse>
 
   if (
-    typeof payload.cancerProbability !== 'number' ||
+    (typeof payload.lesionProbability !== 'number' && typeof payload.cancerProbability !== 'number') ||
     !Array.isArray(payload.regions) ||
     typeof payload.modelVersion !== 'string'
   ) {
     throw new Error('Invalid AI service response payload')
   }
 
+  const lesionProbabilityRaw =
+    typeof payload.lesionProbability === 'number' ? payload.lesionProbability : payload.cancerProbability ?? 0
+  const lesionProbability = Math.max(0, Math.min(1, lesionProbabilityRaw))
+
   return {
     modelVersion: payload.modelVersion,
-    cancerProbability: Math.max(0, Math.min(1, payload.cancerProbability)),
+    lesionProbability,
+    cancerProbability: lesionProbability,
     regions: payload.regions,
     labelScores: payload.labelScores,
     infectionCoverage: payload.infectionCoverage,

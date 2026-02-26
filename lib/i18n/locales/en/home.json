@@ -1,0 +1,13 @@
+{
+  "brand.name": "Lung Detection",
+  "home.aiDetection": "AI Detection",
+  "home.aiDetectionDesc": "Advanced deep learning models analyze X-ray images for lung condition screening",
+  "home.createAccount": "Create Account",
+  "home.doctorReview": "Doctor Review",
+  "home.doctorReviewDesc": "Medical professionals can review and validate AI results",
+  "home.getStarted": "Get Started",
+  "home.reports": "Detailed Reports",
+  "home.reportsDesc": "Generate comprehensive medical reports with findings and recommendations",
+  "home.subtitle": "AI-powered medical imaging analysis to help doctors detect suspicious lung lesions early and accurately.",
+  "home.title": "X-ray Lung Detection System"
+}

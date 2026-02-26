@@ -1,0 +1,22 @@
+{
+  "reports.aiAnalysis": "AI Analysis",
+  "reports.clinicalDiagnosis": "Clinical Diagnosis",
+  "reports.coverTitle": "MEDICAL IMAGING REPORT",
+  "reports.empty": "No reports available",
+  "reports.exportErrorDefault": "Export failed, please retry",
+  "reports.exportPdf": "Export PDF",
+  "reports.exporting": "Exporting...",
+  "reports.lesionProbability": "Lesion Probability:",
+  "reports.listTitle": "Reports ({count})",
+  "reports.loading": "Loading reports...",
+  "reports.na": "N/A",
+  "reports.pageTitle": "Medical Reports",
+  "reports.patientEmail": "Email:",
+  "reports.patientInfo": "Patient Information",
+  "reports.patientName": "Name:",
+  "reports.previewTitle": "Report Preview",
+  "reports.reportDate": "Report Date:",
+  "reports.reportId": "Report ID:",
+  "reports.riskSuffix": " Risk",
+  "reports.selectPrompt": "Select a report to view details"
+}

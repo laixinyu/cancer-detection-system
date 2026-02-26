@@ -1,0 +1,15 @@
+{
+  "viewer.brightness": "亮度",
+  "viewer.confidence": "置信度",
+  "viewer.contrast": "对比度",
+  "viewer.findings": "发现项（{count}）",
+  "viewer.hideAnnotations": "隐藏标注",
+  "viewer.hintPrefix": "按住",
+  "viewer.hintSuffix": "并拖动可绘制标注框",
+  "viewer.imageMissing": "影像文件不存在（404），请重新上传。",
+  "viewer.loadingImage": "正在加载影像...",
+  "viewer.noFindings": "暂无检出结果",
+  "viewer.position": "位置",
+  "viewer.showAnnotations": "显示标注",
+  "viewer.zoom": "缩放"
+}

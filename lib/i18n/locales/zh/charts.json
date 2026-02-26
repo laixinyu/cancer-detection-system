@@ -1,0 +1,8 @@
+{
+  "charts.accuracy": "准确率%",
+  "charts.falseNegative": "假阴性%",
+  "charts.falsePositive": "假阳性%",
+  "charts.reports": "报告",
+  "charts.reviews": "审阅",
+  "charts.uploads": "上传"
+}

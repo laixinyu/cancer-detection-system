@@ -1,0 +1,16 @@
+{
+  "common.back": "Back",
+  "common.cancel": "Cancel",
+  "common.language": "Language",
+  "common.loading": "Loading...",
+  "common.logout": "Logout",
+  "common.noData": "No data",
+  "common.notifications": "Notifications",
+  "common.reports": "Reports",
+  "common.reset": "Reset",
+  "common.review": "Review",
+  "common.save": "Save",
+  "common.upload": "Upload",
+  "lang.en": "English",
+  "lang.zh": "Chinese"
+}

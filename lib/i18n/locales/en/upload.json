@@ -1,0 +1,11 @@
+{
+  "upload.researchNotice": "Research use notice: current AI output is for screening support only and is not a clinical diagnosis.",
+  "upload.step1": "Step 1",
+  "upload.step1Desc": "Select and upload your X-ray images",
+  "upload.step2": "Step 2",
+  "upload.step2Desc": "AI will analyze the images for lung risk screening",
+  "upload.step3": "Step 3",
+  "upload.step3Desc": "View results and doctor's review in reports",
+  "upload.subtitle": "Upload your X-ray images for AI-powered lung screening analysis",
+  "upload.title": "Upload X-ray Images"
+}

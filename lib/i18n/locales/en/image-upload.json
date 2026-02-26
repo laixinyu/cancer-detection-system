@@ -1,0 +1,14 @@
+{
+  "imageUpload.analysisIncomplete": "AI analysis did not complete. Please retry upload.",
+  "imageUpload.consent": "I have read and agreed to the AI-assisted screening notice ({version}), and understand this system is for decision support only and cannot replace a doctor's final diagnosis.",
+  "imageUpload.dragDrop": "Drag & drop X-ray images here",
+  "imageUpload.dropActive": "Drop the files here...",
+  "imageUpload.fileCount": "Uploaded Files ({count})",
+  "imageUpload.formats": "Supported formats: PNG, JPG, JPEG, DICOM, TIFF (Max 10MB per file)",
+  "imageUpload.orClick": "or click to select files",
+  "imageUpload.ready": "Ready to upload",
+  "imageUpload.uploadAll": "Upload All",
+  "imageUpload.uploadFailed": "Upload failed",
+  "imageUpload.uploaded": "Uploaded",
+  "imageUpload.uploading": "Uploading..."
+}

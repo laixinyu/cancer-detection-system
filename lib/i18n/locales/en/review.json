@@ -1,0 +1,23 @@
+{
+  "review.ageGender": "Age / Gender",
+  "review.backToQueue": "Back to Queue",
+  "review.clinicalNotes": "Clinical Notes",
+  "review.confirmedDiagnosis": "Confirmed by doctor: suspicious lesion requires further clinical evaluation",
+  "review.email": "Email",
+  "review.infectionCoverage": "Infection Coverage Spectrum",
+  "review.loadingDetection": "Loading detection...",
+  "review.medicalReview": "Medical Review",
+  "review.name": "Name",
+  "review.notFound": "Detection not found",
+  "review.notesPlaceholder": "Enter clinical observations and recommendations",
+  "review.patientInfo": "Patient Information",
+  "review.patientPrefix": "Patient: ",
+  "review.reviewedDiagnosis": "Reviewed by doctor: continue observation and correlate with clinical context",
+  "review.statusConfirmed": "Confirmed",
+  "review.statusLabel": "Review Status",
+  "review.statusReviewed": "Reviewed",
+  "review.submitReview": "Submit Review",
+  "review.submitting": "Submitting...",
+  "review.title": "Review Detection",
+  "review.uploadDate": "Upload Date"
+}

@@ -1,0 +1,15 @@
+{
+  "viewer.brightness": "Brightness",
+  "viewer.confidence": "Confidence",
+  "viewer.contrast": "Contrast",
+  "viewer.findings": "Findings ({count})",
+  "viewer.hideAnnotations": "Hide Annotations",
+  "viewer.hintPrefix": "Hold",
+  "viewer.hintSuffix": "and drag to draw annotations",
+  "viewer.imageMissing": "Image file missing (404). Please re-upload.",
+  "viewer.loadingImage": "Loading image...",
+  "viewer.noFindings": "No findings detected",
+  "viewer.position": "Position",
+  "viewer.showAnnotations": "Show Annotations",
+  "viewer.zoom": "Zoom"
+}

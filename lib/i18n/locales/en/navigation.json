@@ -1,0 +1,9 @@
+{
+  "nav.admin": "Admin Panel",
+  "nav.annotations": "Annotations",
+  "nav.dashboard": "Dashboard",
+  "nav.images": "My Images",
+  "nav.reports": "Reports",
+  "nav.reviewQueue": "Review Queue",
+  "nav.upload": "Upload"
+}

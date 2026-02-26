@@ -15,8 +15,7 @@ interface UploadedFile {
 }
 
 export default function ImageUpload() {
-  const { t, locale } = useI18n()
-  const isZh = locale === 'zh'
+  const { t } = useI18n()
   const [files, setFiles] = useState<UploadedFile[]>([])
   const [consentAccepted, setConsentAccepted] = useState(false)
   const consentVersion = 'v1.0'
@@ -75,11 +74,7 @@ export default function ImageUpload() {
         }
 
         if (!result?.image || result.image.status !== 'COMPLETED') {
-          throw new Error(
-            isZh
-              ? 'AI 分析未完成，请稍后重试上传'
-              : 'AI analysis did not complete. Please retry upload.'
-          )
+          throw new Error(t('imageUpload.analysisIncomplete'))
         }
 
         setFiles(prev => prev.map((f, idx) => 

@@ -49,8 +49,7 @@ function extractAnnotations(findings: unknown): AnnotationRect[] {
 }
 
 export default function ReviewPage() {
-  const { locale } = useI18n()
-  const isZh = locale === 'zh'
+  const { locale, t } = useI18n()
   const router = useRouter()
   const params = useParams<{ id: string }>()
   const detectionId = params.id
@@ -117,9 +116,10 @@ export default function ReviewPage() {
           patientId: detection.image.patient.id,
           status: status === 'CONFIRMED' ? 'FINALIZED' : 'DRAFT',
           content: {
-            diagnosis: status === 'CONFIRMED' ? (isZh ? '医生已确认：存在需进一步临床评估的可疑病灶' : 'Confirmed by doctor: suspicious lesion requires further clinical evaluation') : (isZh ? '医生已复核：建议继续观察并结合临床信息判断' : 'Reviewed by doctor: continue observation and correlate with clinical context'),
+            diagnosis: status === 'CONFIRMED' ? t('review.confirmedDiagnosis') : t('review.reviewedDiagnosis'),
             doctorNotes: notes,
             aiCancerProbability: detection.cancerProbability,
+            aiLesionProbability: detection.cancerProbability,
             screeningSummary,
           },
         }),
@@ -134,18 +134,18 @@ export default function ReviewPage() {
     }
   }
 
-  if (isLoading) return <div className="p-6 text-gray-500">{isZh ? '正在加载检测结果...' : 'Loading detection...'}</div>
-  if (error || !detection) return <div className="p-6 text-red-600">{error || (isZh ? '未找到检测记录' : 'Detection not found')}</div>
+  if (isLoading) return <div className="p-6 text-gray-500">{t('review.loadingDetection')}</div>
+  if (error || !detection) return <div className="p-6 text-red-600">{error || t('review.notFound')}</div>
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between"><div><h1 className="text-3xl font-bold text-gray-900">{isZh ? '检测审阅' : 'Review Detection'}</h1><p className="text-gray-600 mt-2">{isZh ? '患者：' : 'Patient: '}{detection.image.patient.user.name}</p></div><Button variant="outline" onClick={() => router.back()}>{isZh ? '返回队列' : 'Back to Queue'}</Button></div>
-      <Card><CardHeader><CardTitle>{isZh ? '患者信息' : 'Patient Information'}</CardTitle></CardHeader><CardContent><div className="grid md:grid-cols-4 gap-4"><div><div className="text-sm text-gray-600">{isZh ? '姓名' : 'Name'}</div><div className="font-medium">{detection.image.patient.user.name}</div></div><div><div className="text-sm text-gray-600">{isZh ? '年龄 / 性别' : 'Age / Gender'}</div><div className="font-medium">{calculateAge(detection.image.patient.dateOfBirth)} / {detection.image.patient.gender}</div></div><div><div className="text-sm text-gray-600">{isZh ? '邮箱' : 'Email'}</div><div className="font-medium">{detection.image.patient.user.email}</div></div><div><div className="text-sm text-gray-600">{isZh ? '上传日期' : 'Upload Date'}</div><div className="font-medium">{formatDate(detection.image.createdAt)}</div></div></div></CardContent></Card>
+      <div className="flex items-center justify-between"><div><h1 className="text-3xl font-bold text-gray-900">{t('review.title')}</h1><p className="text-gray-600 mt-2">{t('review.patientPrefix')}{detection.image.patient.user.name}</p></div><Button variant="outline" onClick={() => router.back()}>{t('review.backToQueue')}</Button></div>
+      <Card><CardHeader><CardTitle>{t('review.patientInfo')}</CardTitle></CardHeader><CardContent><div className="grid md:grid-cols-4 gap-4"><div><div className="text-sm text-gray-600">{t('review.name')}</div><div className="font-medium">{detection.image.patient.user.name}</div></div><div><div className="text-sm text-gray-600">{t('review.ageGender')}</div><div className="font-medium">{calculateAge(detection.image.patient.dateOfBirth)} / {detection.image.patient.gender}</div></div><div><div className="text-sm text-gray-600">{t('review.email')}</div><div className="font-medium">{detection.image.patient.user.email}</div></div><div><div className="text-sm text-gray-600">{t('review.uploadDate')}</div><div className="font-medium">{formatDate(detection.image.createdAt)}</div></div></div></CardContent></Card>
       <ImageViewer imageUrl={detection.image.filePath} detections={annotations} editable={true} />
       {infectionCoverage && (
-        <Card><CardHeader><CardTitle>{isZh ? '感染覆盖风险谱' : 'Infection Coverage Spectrum'}</CardTitle></CardHeader><CardContent><div className="grid md:grid-cols-2 gap-2">{Object.entries(infectionCoverage).sort((a, b) => b[1] - a[1]).map(([label, score]) => (<div key={label} className="rounded border px-2 py-1 text-xs flex items-center justify-between"><span>{getInfectionCoverageLabel(label, isZh)}</span><span className="font-semibold">{(score * 100).toFixed(1)}%</span></div>))}</div></CardContent></Card>
+        <Card><CardHeader><CardTitle>{t('review.infectionCoverage')}</CardTitle></CardHeader><CardContent><div className="grid md:grid-cols-2 gap-2">{Object.entries(infectionCoverage).sort((a, b) => b[1] - a[1]).map(([label, score]) => (<div key={label} className="rounded border px-2 py-1 text-xs flex items-center justify-between"><span>{getInfectionCoverageLabel(label, locale)}</span><span className="font-semibold">{(score * 100).toFixed(1)}%</span></div>))}</div></CardContent></Card>
       )}
-      <Card><CardHeader><CardTitle>{isZh ? '医生审阅' : 'Medical Review'}</CardTitle></CardHeader><CardContent className="space-y-4"><div><label className="block text-sm font-medium mb-2">{isZh ? '审阅状态' : 'Review Status'}</label><div className="flex gap-2"><Button variant={status === 'REVIEWED' ? 'default' : 'outline'} onClick={() => setStatus('REVIEWED')} className="flex-1">{isZh ? '已审阅' : 'Reviewed'}</Button><Button variant={status === 'CONFIRMED' ? 'default' : 'outline'} onClick={() => setStatus('CONFIRMED')} className="flex-1">{isZh ? '已确认' : 'Confirmed'}</Button></div></div><div><label htmlFor="notes" className="block text-sm font-medium mb-2">{isZh ? '临床备注' : 'Clinical Notes'}</label><textarea id="notes" value={notes} onChange={(e) => setNotes(e.target.value)} className="w-full h-32 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder={isZh ? '输入临床观察与建议' : 'Enter clinical observations and recommendations'} /></div><div className="flex gap-3 pt-4"><Button onClick={handleSubmit} disabled={isSubmitting || !notes.trim()} className="flex-1">{isSubmitting ? (isZh ? '提交中...' : 'Submitting...') : isZh ? '提交审阅' : 'Submit Review'}</Button><Button variant="outline" onClick={() => router.back()} disabled={isSubmitting}>{isZh ? '取消' : 'Cancel'}</Button></div></CardContent></Card>
+      <Card><CardHeader><CardTitle>{t('review.medicalReview')}</CardTitle></CardHeader><CardContent className="space-y-4"><div><label className="block text-sm font-medium mb-2">{t('review.statusLabel')}</label><div className="flex gap-2"><Button variant={status === 'REVIEWED' ? 'default' : 'outline'} onClick={() => setStatus('REVIEWED')} className="flex-1">{t('review.statusReviewed')}</Button><Button variant={status === 'CONFIRMED' ? 'default' : 'outline'} onClick={() => setStatus('CONFIRMED')} className="flex-1">{t('review.statusConfirmed')}</Button></div></div><div><label htmlFor="notes" className="block text-sm font-medium mb-2">{t('review.clinicalNotes')}</label><textarea id="notes" value={notes} onChange={(e) => setNotes(e.target.value)} className="w-full h-32 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder={t('review.notesPlaceholder')} /></div><div className="flex gap-3 pt-4"><Button onClick={handleSubmit} disabled={isSubmitting || !notes.trim()} className="flex-1">{isSubmitting ? t('review.submitting') : t('review.submitReview')}</Button><Button variant="outline" onClick={() => router.back()} disabled={isSubmitting}>{t('common.cancel')}</Button></div></CardContent></Card>
     </div>
   )
 }

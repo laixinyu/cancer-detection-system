@@ -1,0 +1,11 @@
+{
+  "upload.researchNotice": "研究用途提示：当前 AI 结果仅用于辅助筛查，不构成临床诊断结论。",
+  "upload.step1": "步骤 1",
+  "upload.step1Desc": "选择并上传 X 光影像",
+  "upload.step2": "步骤 2",
+  "upload.step2Desc": "AI 自动检测并生成初步结果",
+  "upload.step3": "步骤 3",
+  "upload.step3Desc": "在报告中查看结果与医生审阅意见",
+  "upload.subtitle": "上传影像后将进行 AI 肺部风险筛查分析",
+  "upload.title": "上传 X 光影像"
+}

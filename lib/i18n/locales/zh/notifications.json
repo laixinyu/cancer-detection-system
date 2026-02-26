@@ -1,0 +1,11 @@
+{
+  "notify.hoursAgo": "{count} 小时前",
+  "notify.imageStatus": "影像状态：{status}",
+  "notify.justNow": "刚刚",
+  "notify.markAllRead": "全部已读",
+  "notify.minutesAgo": "{count} 分钟前",
+  "notify.none": "暂无通知",
+  "notify.reportDraftUpdated": "报告草稿已更新",
+  "notify.reportFinalized": "报告已定稿",
+  "notify.unread": "未读 {count} 条"
+}

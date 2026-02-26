@@ -1,3 +1,4 @@
+import type { Locale } from '@/lib/i18n'
 import type { AiDetectionResponse } from '@/lib/ai-service'
 
 type TaskDecision = {
@@ -36,10 +37,10 @@ const infectionCoverageLabelMap = {
   },
 } as const
 
-export function getInfectionCoverageLabel(label: string, isZh: boolean): string {
+export function getInfectionCoverageLabel(label: string, locale: Locale): string {
   const mapped = infectionCoverageLabelMap[label as keyof typeof infectionCoverageLabelMap]
   if (mapped) {
-    return isZh ? mapped.zh : mapped.en
+    return mapped[locale]
   }
   return label
 }
@@ -75,8 +76,7 @@ export function buildScreeningSummary(ai: AiDetectionResponse): ScreeningSummary
   const pneumoniaScore = pickScore(labelScores, ['肺炎(Pneumonia)', 'Pneumonia'])
   const noduleScore = pickScore(labelScores, ['结节(Nodule)', 'Nodule'])
   const massScore = pickScore(labelScores, ['肿块(Mass)', 'Mass'])
-  const opacityScore = pickScore(labelScores, ['浸润/实变(Opacity)', 'Lung Opacity', 'Opacity'])
-  const lesionScore = clamp01(Math.max(ai.cancerProbability, noduleScore, massScore, opacityScore))
+  const lesionScore = clamp01(Math.max(ai.lesionProbability ?? ai.cancerProbability, noduleScore, massScore))
   const whiteLungScore = clamp01(ai.whiteLungAssessment?.whiteLungScore ?? 0)
   const overallScore = clamp01(Math.max(pneumoniaScore, lesionScore, whiteLungScore))
   const infectionCoverage = ai.infectionCoverage ?? {}
@@ -92,7 +92,7 @@ export function buildScreeningSummary(ai: AiDetectionResponse): ScreeningSummary
 
   const suspectedConditions: string[] = []
   if (pneumoniaScore >= 0.3 || pneumoniaDecision.highSensitivity) suspectedConditions.push('PNEUMONIA_RISK')
-  if (lesionScore >= 0.3 || lesionDecision.highSensitivity) suspectedConditions.push('LUNG_CANCER_RELATED_LESION_RISK')
+  if (lesionScore >= 0.3 || lesionDecision.highSensitivity) suspectedConditions.push('LUNG_LESION_RISK')
   if (whiteLungScore >= 0.35) suspectedConditions.push('WHITE_LUNG_PATTERN_RISK')
   if ((infectionCoverage.covidLikeWhiteLungPattern ?? 0) >= 0.35) suspectedConditions.push('COVID_LIKE_INFECTION_RISK')
 

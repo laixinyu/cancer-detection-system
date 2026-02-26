@@ -1,0 +1,18 @@
+{
+  "images.close": "Close",
+  "images.completed": "Completed",
+  "images.dicomNoPreview": "DICOM preview is not available in browser.",
+  "images.empty": "No images uploaded yet",
+  "images.failed": "Failed",
+  "images.lesionRisk": "Lesion Risk:",
+  "images.loading": "Loading images...",
+  "images.preview": "Preview",
+  "images.processing": "Processing",
+  "images.sessionExpired": "Session expired. Please sign in again.",
+  "images.subtitle": "View and manage your uploaded medical images",
+  "images.title": "My X-ray Images",
+  "images.total": "Total Images",
+  "images.uploadFirst": "Upload Your First Image",
+  "images.uploadNew": "Upload New Image",
+  "images.uploadedTitle": "Uploaded Images"
+}

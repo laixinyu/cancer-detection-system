@@ -32,13 +32,12 @@ const userGrowthData = [
 ]
 
 export function ActivityChart() {
-  const { locale } = useI18n()
-  const isZh = locale === 'zh'
+  const { t } = useI18n()
 
   const lineNames = {
-    uploads: isZh ? '上传' : 'Uploads',
-    reviews: isZh ? '审阅' : 'Reviews',
-    reports: isZh ? '报告' : 'Reports',
+    uploads: t('charts.uploads'),
+    reviews: t('charts.reviews'),
+    reports: t('charts.reports'),
   }
 
   return (
@@ -58,22 +57,15 @@ export function ActivityChart() {
 }
 
 export function DetectionChart() {
-  const { locale } = useI18n()
-  const isZh = locale === 'zh'
+  const { t } = useI18n()
   const chartData = detectionData.map((item) => ({
     ...item,
     name:
       item.name === 'Low Risk'
-        ? isZh
-          ? '低风险'
-          : 'Low Risk'
+        ? t('risk.lowLabel')
         : item.name === 'Medium Risk'
-        ? isZh
-          ? '中风险'
-          : 'Medium Risk'
-        : isZh
-        ? '高风险'
-        : 'High Risk',
+        ? t('risk.mediumLabel')
+        : t('risk.highLabel'),
   }))
 
   return (
@@ -100,8 +92,7 @@ export function DetectionChart() {
 }
 
 export function UserGrowthChart() {
-  const { locale } = useI18n()
-  const isZh = locale === 'zh'
+  const { t } = useI18n()
 
   return (
     <ResponsiveContainer width="100%" height={300}>
@@ -111,7 +102,7 @@ export function UserGrowthChart() {
         <YAxis />
         <Tooltip />
         <Legend />
-        <Bar dataKey="users" fill="#3b82f6" name={isZh ? '用户总数' : 'Total Users'} />
+        <Bar dataKey="users" fill="#3b82f6" name={t('admin.totalUsers')} />
       </BarChart>
     </ResponsiveContainer>
   )
@@ -126,8 +117,7 @@ const modelPerformanceData = [
 ]
 
 export function ModelPerformanceChart() {
-  const { locale } = useI18n()
-  const isZh = locale === 'zh'
+  const { t } = useI18n()
 
   return (
     <ResponsiveContainer width="100%" height={300}>
@@ -137,9 +127,9 @@ export function ModelPerformanceChart() {
         <YAxis />
         <Tooltip />
         <Legend />
-        <Line type="monotone" dataKey="accuracy" stroke="#10b981" strokeWidth={2} name={isZh ? '准确率%' : 'Accuracy %'} />
-        <Line type="monotone" dataKey="falsePositive" stroke="#f59e0b" strokeWidth={2} name={isZh ? '假阳性%' : 'False Positive %'} />
-        <Line type="monotone" dataKey="falseNegative" stroke="#ef4444" strokeWidth={2} name={isZh ? '假阴性%' : 'False Negative %'} />
+        <Line type="monotone" dataKey="accuracy" stroke="#10b981" strokeWidth={2} name={t('charts.accuracy')} />
+        <Line type="monotone" dataKey="falsePositive" stroke="#f59e0b" strokeWidth={2} name={t('charts.falsePositive')} />
+        <Line type="monotone" dataKey="falseNegative" stroke="#ef4444" strokeWidth={2} name={t('charts.falseNegative')} />
       </LineChart>
     </ResponsiveContainer>
   )

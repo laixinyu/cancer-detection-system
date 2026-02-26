@@ -15,8 +15,7 @@ type ReportItem = { id: string }
 type AuditItem = { id: string; action: string; result: string; entityType: string; entityId: string; createdAt: string }
 
 export default function DashboardPage() {
-  const { locale } = useI18n()
-  const isZh = locale === 'zh'
+  const { t } = useI18n()
   const router = useRouter()
   const { user, status, authFetch } = useAuth()
   const [isLoading, setIsLoading] = useState(true)
@@ -65,7 +64,7 @@ export default function DashboardPage() {
   if (status === 'loading' || isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="text-gray-600">{isZh ? '加载中...' : 'Loading...'}</div>
+        <div className="text-gray-600">{t('common.loading')}</div>
       </div>
     )
   }
@@ -90,33 +89,33 @@ export default function DashboardPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold text-gray-900">
-          {isZh ? '欢迎，' : 'Welcome, '}
+          {t('dashboard.welcome')}
           {user.name}
         </h1>
       </div>
 
       {userRole === 'PATIENT' && (
         <div className="grid md:grid-cols-3 gap-6">
-          <Card><CardHeader><CardTitle className="text-lg">{isZh ? '我的影像' : 'My Images'}</CardTitle></CardHeader><CardContent><div className="text-4xl font-bold text-blue-600 mb-2">{images.length}</div><Link href="/dashboard/images"><Button variant="outline" size="sm" className="w-full">{isZh ? '查看全部' : 'View All'}</Button></Link></CardContent></Card>
-          <Card><CardHeader><CardTitle className="text-lg">{isZh ? '待处理' : 'Pending Reviews'}</CardTitle></CardHeader><CardContent><div className="text-4xl font-bold text-yellow-600 mb-2">{pendingImages}</div><Link href="/dashboard/upload"><Button size="sm" className="w-full">{isZh ? '上传新影像' : 'Upload New'}</Button></Link></CardContent></Card>
-          <Card><CardHeader><CardTitle className="text-lg">{isZh ? '报告' : 'Reports'}</CardTitle></CardHeader><CardContent><div className="text-4xl font-bold text-green-600 mb-2">{reports.length}</div><Link href="/dashboard/reports"><Button variant="outline" size="sm" className="w-full">{isZh ? '查看报告' : 'View Reports'}</Button></Link></CardContent></Card>
+          <Card><CardHeader><CardTitle className="text-lg">{t('dashboard.myImages')}</CardTitle></CardHeader><CardContent><div className="text-4xl font-bold text-blue-600 mb-2">{images.length}</div><Link href="/dashboard/images"><Button variant="outline" size="sm" className="w-full">{t('dashboard.viewAll')}</Button></Link></CardContent></Card>
+          <Card><CardHeader><CardTitle className="text-lg">{t('dashboard.pendingReviews')}</CardTitle></CardHeader><CardContent><div className="text-4xl font-bold text-yellow-600 mb-2">{pendingImages}</div><Link href="/dashboard/upload"><Button size="sm" className="w-full">{t('dashboard.uploadNew')}</Button></Link></CardContent></Card>
+          <Card><CardHeader><CardTitle className="text-lg">{t('dashboard.reports')}</CardTitle></CardHeader><CardContent><div className="text-4xl font-bold text-green-600 mb-2">{reports.length}</div><Link href="/dashboard/reports"><Button variant="outline" size="sm" className="w-full">{t('dashboard.viewReports')}</Button></Link></CardContent></Card>
         </div>
       )}
 
       {userRole === 'DOCTOR' && (
         <div className="grid md:grid-cols-4 gap-6">
-          <Card><CardHeader><CardTitle className="text-lg">{isZh ? '待审队列' : 'Review Queue'}</CardTitle></CardHeader><CardContent><div className="text-4xl font-bold text-orange-600 mb-2">{pendingDetections}</div><Link href="/dashboard/doctor/queue"><Button size="sm" className="w-full">{isZh ? '开始审阅' : 'Start Review'}</Button></Link></CardContent></Card>
-          <Card><CardHeader><CardTitle className="text-lg">{isZh ? '今日已审阅' : 'Today Reviews'}</CardTitle></CardHeader><CardContent><div className="text-4xl font-bold text-blue-600 mb-2">{reviewedToday}</div></CardContent></Card>
-          <Card><CardHeader><CardTitle className="text-lg">{isZh ? '报告' : 'Reports'}</CardTitle></CardHeader><CardContent><div className="text-4xl font-bold text-purple-600 mb-2">{reports.length}</div><Link href="/dashboard/reports"><Button variant="outline" size="sm" className="w-full">{isZh ? '查看报告' : 'View Reports'}</Button></Link></CardContent></Card>
-          <Card><CardHeader><CardTitle className="text-lg">{isZh ? '高风险待审' : 'High Risk Pending'}</CardTitle></CardHeader><CardContent><div className="text-4xl font-bold text-red-600 mb-2">{detections.filter((item) => item.status === 'PENDING' && item.cancerProbability >= 0.7).length}</div></CardContent></Card>
+          <Card><CardHeader><CardTitle className="text-lg">{t('dashboard.reviewQueue')}</CardTitle></CardHeader><CardContent><div className="text-4xl font-bold text-orange-600 mb-2">{pendingDetections}</div><Link href="/dashboard/doctor/queue"><Button size="sm" className="w-full">{t('dashboard.startReview')}</Button></Link></CardContent></Card>
+          <Card><CardHeader><CardTitle className="text-lg">{t('dashboard.todayReviews')}</CardTitle></CardHeader><CardContent><div className="text-4xl font-bold text-blue-600 mb-2">{reviewedToday}</div></CardContent></Card>
+          <Card><CardHeader><CardTitle className="text-lg">{t('dashboard.reports')}</CardTitle></CardHeader><CardContent><div className="text-4xl font-bold text-purple-600 mb-2">{reports.length}</div><Link href="/dashboard/reports"><Button variant="outline" size="sm" className="w-full">{t('dashboard.viewReports')}</Button></Link></CardContent></Card>
+          <Card><CardHeader><CardTitle className="text-lg">{t('dashboard.highLesionRiskPending')}</CardTitle></CardHeader><CardContent><div className="text-4xl font-bold text-red-600 mb-2">{detections.filter((item) => item.status === 'PENDING' && item.cancerProbability >= 0.7).length}</div></CardContent></Card>
         </div>
       )}
 
       <Card>
-        <CardHeader><CardTitle>{isZh ? '最近活动' : 'Recent Activity'}</CardTitle></CardHeader>
+        <CardHeader><CardTitle>{t('dashboard.recentActivity')}</CardTitle></CardHeader>
         <CardContent>
           {activity.length === 0 ? (
-            <div className="text-center py-8 text-gray-500">{isZh ? '暂无最近活动' : 'No recent activity'}</div>
+            <div className="text-center py-8 text-gray-500">{t('dashboard.noRecentActivity')}</div>
           ) : (
             <div className="space-y-3">
               {activity.map((item) => (

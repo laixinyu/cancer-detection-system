@@ -1,0 +1,18 @@
+{
+  "images.close": "关闭",
+  "images.completed": "已完成",
+  "images.dicomNoPreview": "DICOM 文件暂不支持网页内预览",
+  "images.empty": "还没有上传影像",
+  "images.failed": "失败",
+  "images.lesionRisk": "病灶风险：",
+  "images.loading": "正在加载影像...",
+  "images.preview": "预览",
+  "images.processing": "处理中",
+  "images.sessionExpired": "登录已失效，请重新登录",
+  "images.subtitle": "查看并管理你上传的医学影像",
+  "images.title": "我的 X 光影像",
+  "images.total": "影像总数",
+  "images.uploadFirst": "上传第一张影像",
+  "images.uploadNew": "上传新影像",
+  "images.uploadedTitle": "已上传影像"
+}

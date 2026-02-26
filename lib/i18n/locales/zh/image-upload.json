@@ -1,0 +1,14 @@
+{
+  "imageUpload.analysisIncomplete": "AI 分析未完成，请稍后重试上传",
+  "imageUpload.consent": "我已阅读并同意 AI 辅助筛查告知（{version}），理解该系统仅用于辅助决策，不能替代医生最终诊断。",
+  "imageUpload.dragDrop": "拖拽 X 光影像到此处",
+  "imageUpload.dropActive": "将文件拖拽到这里...",
+  "imageUpload.fileCount": "待上传文件（{count}）",
+  "imageUpload.formats": "支持格式：PNG、JPG、JPEG、DICOM、TIFF（单文件最大 10MB）",
+  "imageUpload.orClick": "或点击选择文件",
+  "imageUpload.ready": "待上传",
+  "imageUpload.uploadAll": "全部上传",
+  "imageUpload.uploadFailed": "上传失败",
+  "imageUpload.uploaded": "已上传",
+  "imageUpload.uploading": "上传中..."
+}

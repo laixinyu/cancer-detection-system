@@ -1,0 +1,15 @@
+{
+  "doctorQueue.empty": "暂无待审病例",
+  "doctorQueue.filterAll": "全部",
+  "doctorQueue.filterHigh": "高优先级",
+  "doctorQueue.filterLow": "低优先级",
+  "doctorQueue.filterMedium": "中优先级",
+  "doctorQueue.loading": "正在加载队列...",
+  "doctorQueue.model": "模型：",
+  "doctorQueue.startReview": "开始审阅",
+  "doctorQueue.status": "状态：",
+  "doctorQueue.title": "审阅队列",
+  "doctorQueue.unknownPatient": "未知患者",
+  "doctorQueue.uploadedAt": "上传时间：",
+  "doctorQueue.viewDetails": "查看详情"
+}

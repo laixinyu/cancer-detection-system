@@ -1,0 +1,23 @@
+{
+  "review.ageGender": "年龄 / 性别",
+  "review.backToQueue": "返回队列",
+  "review.clinicalNotes": "临床备注",
+  "review.confirmedDiagnosis": "医生已确认：存在需进一步临床评估的可疑病灶",
+  "review.email": "邮箱",
+  "review.infectionCoverage": "感染覆盖风险谱",
+  "review.loadingDetection": "正在加载检测结果...",
+  "review.medicalReview": "医生审阅",
+  "review.name": "姓名",
+  "review.notFound": "未找到检测记录",
+  "review.notesPlaceholder": "输入临床观察与建议",
+  "review.patientInfo": "患者信息",
+  "review.patientPrefix": "患者：",
+  "review.reviewedDiagnosis": "医生已复核：建议继续观察并结合临床信息判断",
+  "review.statusConfirmed": "已确认",
+  "review.statusLabel": "审阅状态",
+  "review.statusReviewed": "已审阅",
+  "review.submitReview": "提交审阅",
+  "review.submitting": "提交中...",
+  "review.title": "检测审阅",
+  "review.uploadDate": "上传日期"
+}

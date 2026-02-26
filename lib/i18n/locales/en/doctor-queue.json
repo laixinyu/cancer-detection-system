@@ -1,0 +1,15 @@
+{
+  "doctorQueue.empty": "No cases pending review",
+  "doctorQueue.filterAll": "All",
+  "doctorQueue.filterHigh": "High Priority",
+  "doctorQueue.filterLow": "Low Priority",
+  "doctorQueue.filterMedium": "Medium Priority",
+  "doctorQueue.loading": "Loading queue...",
+  "doctorQueue.model": "Model: ",
+  "doctorQueue.startReview": "Start Review",
+  "doctorQueue.status": "Status: ",
+  "doctorQueue.title": "Review Queue",
+  "doctorQueue.unknownPatient": "Unknown Patient",
+  "doctorQueue.uploadedAt": "Uploaded: ",
+  "doctorQueue.viewDetails": "View Details"
+}

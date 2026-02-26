@@ -1,0 +1,13 @@
+{
+  "brand.name": "肺部检测系统",
+  "home.aiDetection": "AI 检测",
+  "home.aiDetectionDesc": "使用深度学习模型分析 X 光影像，识别可疑病灶",
+  "home.createAccount": "创建账号",
+  "home.doctorReview": "医生审阅",
+  "home.doctorReviewDesc": "由临床医生复核并确认 AI 检测结果",
+  "home.getStarted": "立即开始",
+  "home.reports": "详细报告",
+  "home.reportsDesc": "生成结构化医疗报告与后续建议",
+  "home.subtitle": "基于 AI 的医学影像分析，帮助医生更早、更准确地识别可疑肺部病灶风险。",
+  "home.title": "X光片肺部检测系统"
+}

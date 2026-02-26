@@ -22,11 +22,10 @@ type ImageItem = {
 }
 
 export default function ImagesPage() {
-  const { locale } = useI18n()
-  const isZh = locale === 'zh'
+  const { t } = useI18n()
   const { data: session, status } = useSession()
   const [images, setImages] = useState<ImageItem[]>([])
-  const [isLoading, setIsLoading] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   const [previewLoadFailed, setPreviewLoadFailed] = useState<Record<string, boolean>>({})
@@ -41,8 +40,6 @@ export default function ImagesPage() {
       return
     }
     let active = true
-    setIsLoading(true)
-    setError(null)
     gatewayGet<{ images: ImageItem[] }>('/images', session.user.accessToken, { limit: 100 })
       .then((data) => {
         if (!active) return
@@ -79,9 +76,9 @@ export default function ImagesPage() {
   }
 
   const getRiskLevel = (probability: number) => {
-    if (probability < 0.3) return { text: isZh ? '低' : 'Low', color: 'text-green-600' }
-    if (probability < 0.7) return { text: isZh ? '中' : 'Medium', color: 'text-yellow-600' }
-    return { text: isZh ? '高' : 'High', color: 'text-red-600' }
+    if (probability < 0.3) return { text: t('risk.low'), color: 'text-green-600' }
+    if (probability < 0.7) return { text: t('risk.medium'), color: 'text-yellow-600' }
+    return { text: t('risk.high'), color: 'text-red-600' }
   }
 
   const canInlinePreview = (fileType: string, imageId: string) => {
@@ -101,11 +98,11 @@ export default function ImagesPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">{isZh ? '我的 X 光影像' : 'My X-ray Images'}</h1>
-          <p className="text-gray-600 mt-2">{isZh ? '查看并管理你上传的医学影像' : 'View and manage your uploaded medical images'}</p>
+          <h1 className="text-3xl font-bold text-gray-900">{t('images.title')}</h1>
+          <p className="text-gray-600 mt-2">{t('images.subtitle')}</p>
         </div>
         <Link href="/dashboard/upload">
-          <Button>{isZh ? '上传新影像' : 'Upload New Image'}</Button>
+          <Button>{t('images.uploadNew')}</Button>
         </Link>
       </div>
 
@@ -113,48 +110,48 @@ export default function ImagesPage() {
         <Card>
           <CardContent className="pt-6">
             <div className="text-2xl font-bold text-blue-600">{images.length}</div>
-            <p className="text-sm text-gray-600">{isZh ? '影像总数' : 'Total Images'}</p>
+            <p className="text-sm text-gray-600">{t('images.total')}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-6">
             <div className="text-2xl font-bold text-green-600">{completed}</div>
-            <p className="text-sm text-gray-600">{isZh ? '已完成' : 'Completed'}</p>
+            <p className="text-sm text-gray-600">{t('images.completed')}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-6">
             <div className="text-2xl font-bold text-yellow-600">{processing}</div>
-            <p className="text-sm text-gray-600">{isZh ? '处理中' : 'Processing'}</p>
+            <p className="text-sm text-gray-600">{t('images.processing')}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-6">
             <div className="text-2xl font-bold text-red-600">{failed}</div>
-            <p className="text-sm text-gray-600">{isZh ? '失败' : 'Failed'}</p>
+            <p className="text-sm text-gray-600">{t('images.failed')}</p>
           </CardContent>
         </Card>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>{isZh ? '已上传影像' : 'Uploaded Images'}</CardTitle>
+          <CardTitle>{t('images.uploadedTitle')}</CardTitle>
         </CardHeader>
         <CardContent>
           {(status === 'loading' || isLoading) && (
-            <div className="text-center py-8 text-gray-500">{isZh ? '正在加载影像...' : 'Loading images...'}</div>
+            <div className="text-center py-8 text-gray-500">{t('images.loading')}</div>
           )}
           {status === 'unauthenticated' && (
-            <div className="text-center py-8 text-red-600">{isZh ? '登录已失效，请重新登录' : 'Session expired. Please sign in again.'}</div>
+            <div className="text-center py-8 text-red-600">{t('images.sessionExpired')}</div>
           )}
           {error && <div className="text-center py-8 text-red-600">{error}</div>}
 
           {status === 'authenticated' && !isLoading && !error && images.length === 0 && (
             <div className="text-center py-12">
               <div className="text-6xl mb-4">📁</div>
-              <p className="text-gray-500 mb-4">{isZh ? '还没有上传影像' : 'No images uploaded yet'}</p>
+              <p className="text-gray-500 mb-4">{t('images.empty')}</p>
               <Link href="/dashboard/upload">
-                <Button>{isZh ? '上传第一张影像' : 'Upload Your First Image'}</Button>
+                <Button>{t('images.uploadFirst')}</Button>
               </Link>
             </div>
           )}
@@ -201,7 +198,7 @@ export default function ImagesPage() {
 
                       {latestDetection && risk && (
                         <div className="mt-2 flex items-center gap-2">
-                          <span className="text-sm text-gray-600">{isZh ? '癌症风险：' : 'Cancer Risk:'}</span>
+                          <span className="text-sm text-gray-600">{t('images.lesionRisk')}</span>
                           <span className={`text-sm font-semibold ${risk.color}`}>{risk.text}</span>
                           <span className="text-sm text-gray-500">
                             ({(latestDetection.cancerProbability * 100).toFixed(1)}%)
@@ -222,7 +219,7 @@ export default function ImagesPage() {
                           })
                         }
                       >
-                        {isZh ? '预览' : 'Preview'}
+                        {t('images.preview')}
                       </Button>
                       <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(image.status)}`}>
                         {image.status}
@@ -248,14 +245,14 @@ export default function ImagesPage() {
                 <p className="text-xs text-gray-500">{previewImage.fileType}</p>
               </div>
               <Button variant="outline" size="sm" onClick={closePreview}>
-                {isZh ? '关闭' : 'Close'}
+                {t('images.close')}
               </Button>
             </div>
             <div className="flex max-h-[80vh] items-center justify-center bg-black p-3">
               {previewImage.fileType === 'DICOM' ? (
                 <div className="text-center text-gray-300">
                   <div className="mb-2 text-5xl">🩻</div>
-                  <p>{isZh ? 'DICOM 文件暂不支持网页内预览' : 'DICOM preview is not available in browser.'}</p>
+                  <p>{t('images.dicomNoPreview')}</p>
                 </div>
               ) : (
                 <img
