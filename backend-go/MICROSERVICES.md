@@ -161,13 +161,14 @@ graph TB
 ## 数据边界（迁移入口）
 
 - 每个服务支持独立数据库连接串：
+  - gateway：`GATEWAY_DATABASE_URL`（网关自有数据，如认证/上传/幂等/outbox）
   - detection：`DETECTION_DATABASE_URL`（必填）
   - report：`REPORT_DATABASE_URL`（必填）
   - governance：`GOVERNANCE_DATABASE_URL`（必填）
 - 建议迁移顺序：
   1. 先配置独立连接串（可先同实例不同 schema）。
   2. 再拆分物理实例与备份策略。
-  3. 最后移除共享 `DATABASE_URL` 依赖。
+  3. 生产仅使用服务级 DSN，移除共享 `DATABASE_URL` 依赖。
 
 ## 当前改造状态
 

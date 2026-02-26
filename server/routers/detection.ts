@@ -1,6 +1,5 @@
 import { createTRPCRouter, protectedProcedure } from '../trpc'
 import { z } from 'zod'
-import { TRPCError } from '@trpc/server'
 import { backendRequest } from '@/server/backend-client'
 
 export const detectionRouter = createTRPCRouter({
