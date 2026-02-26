@@ -5,6 +5,7 @@ import json
 import os
 import random
 import time
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Iterable, List, Sequence, Tuple, Optional
@@ -16,6 +17,11 @@ from torch import nn
 from torch.utils.data import DataLoader, Dataset, WeightedRandomSampler
 from torchvision import models, transforms
 from tqdm import tqdm
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+AI_SERVICE_ROOT = SCRIPT_DIR.parent
+if str(AI_SERVICE_ROOT) not in sys.path:
+    sys.path.insert(0, str(AI_SERVICE_ROOT))
 
 from app.preprocess import ImagePreprocessor
 

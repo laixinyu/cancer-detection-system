@@ -7,16 +7,24 @@ from typing import Dict, List, Tuple
 import numpy as np
 
 
-def load_csv(path: Path) -> Tuple[np.ndarray, np.ndarray]:
+def load_csv(path: Path, task: str = "") -> Tuple[np.ndarray, np.ndarray]:
     y_true: List[int] = []
     y_score: List[float] = []
+    task_filter = task.strip().lower()
     with path.open("r", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         if "y_true" not in reader.fieldnames or "y_score" not in reader.fieldnames:
             raise ValueError("CSV must include columns: y_true,y_score")
         for row in reader:
+            if task_filter:
+                row_task = str(row.get("task", "")).strip().lower()
+                if row_task != task_filter:
+                    continue
             y_true.append(int(row["y_true"]))
             y_score.append(float(row["y_score"]))
+    if not y_true:
+        msg = f"No rows matched task={task_filter}" if task_filter else "No rows found in CSV"
+        raise ValueError(msg)
     return np.array(y_true, dtype=np.int32), np.array(y_score, dtype=np.float64)
 
 
@@ -108,12 +116,13 @@ def evaluate(y_true: np.ndarray, y_score: np.ndarray, thr_sens: float, thr_spec:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Evaluate model predictions from CSV file.")
     parser.add_argument("--csv", required=True, help="CSV with columns y_true,y_score")
+    parser.add_argument("--task", default="", help="Optional task filter (requires CSV column 'task')")
     parser.add_argument("--thr-sens", type=float, default=0.30, help="High-sensitivity threshold")
     parser.add_argument("--thr-spec", type=float, default=0.70, help="High-specificity threshold")
     parser.add_argument("--out", default="", help="Optional JSON output file path")
     args = parser.parse_args()
 
-    y_true, y_score = load_csv(Path(args.csv))
+    y_true, y_score = load_csv(Path(args.csv), task=args.task)
     report = evaluate(y_true, y_score, args.thr_sens, args.thr_spec)
     print(json.dumps(report, ensure_ascii=False, indent=2))
 
