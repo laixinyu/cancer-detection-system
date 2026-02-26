@@ -68,9 +68,12 @@ type Config struct {
 }
 
 func Load() (*Config, error) {
-	dsn := strings.TrimSpace(os.Getenv("DATABASE_URL"))
+	dsn := strings.TrimSpace(os.Getenv("GATEWAY_DATABASE_URL"))
 	if dsn == "" {
-		return nil, fmt.Errorf("DATABASE_URL is required")
+		dsn = strings.TrimSpace(os.Getenv("DATABASE_URL"))
+	}
+	if dsn == "" {
+		return nil, fmt.Errorf("GATEWAY_DATABASE_URL is required")
 	}
 
 	jwtSecret := strings.TrimSpace(os.Getenv("BACKEND_JWT_SECRET"))

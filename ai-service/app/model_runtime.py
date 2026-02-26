@@ -1,0 +1,898 @@
+import os
+import json
+import hashlib
+import logging
+import threading
+from glob import glob
+from typing import Dict, List, Optional, Tuple
+
+import cv2
+import numpy as np
+import onnxruntime as ort
+from pydantic import BaseModel
+
+from app.config import ModelSettings, load_model_settings
+from app.postprocess import InferencePostprocessor
+from app.preprocess import ImagePreprocessor
+
+logger = logging.getLogger("ai-service")
+logging.basicConfig(level=os.getenv("AI_LOG_LEVEL", "INFO").upper())
+
+LABEL_PNEUMONIA = "肺炎(Pneumonia)"
+LABEL_NODULE = "结节(Nodule)"
+LABEL_MASS = "肿块(Mass)"
+LABEL_OPACITY = "浸润/实变(Opacity)"
+TASK_LABELS = [LABEL_PNEUMONIA, LABEL_NODULE, LABEL_MASS, LABEL_OPACITY]
+TASK_PNEUMONIA = "pneumonia"
+TASK_LESION = "lesion"
+
+
+class Region(BaseModel):
+    x: float
+    y: float
+    width: float
+    height: float
+    confidence: float
+    label: str
+
+
+class PredictResponse(BaseModel):
+    modelVersion: str
+    cancerProbability: float
+    regions: List[Region]
+    labelScores: Dict[str, float]
+    infectionCoverage: Dict[str, float]
+    whiteLungAssessment: Dict[str, object]
+    topFindings: List[str]
+    calibrationTemperature: float
+    decisionHighSensitivity: bool
+    decisionHighSpecificity: bool
+    taskDecisions: Dict[str, Dict[str, bool]]
+    operatingPointsUsed: Dict[str, Dict[str, float]]
+    clinicalUse: str
+    clinicalStage: str
+    detectorModelLoaded: bool
+    heatmapPath: Optional[str] = None
+
+
+class ModelRunner:
+    def __init__(self, settings: Optional[ModelSettings] = None) -> None:
+        settings = settings or load_model_settings()
+        self._init_lock = threading.RLock()
+        self.settings = settings
+        self.model_path = settings.model_path
+        self.model_version = settings.model_version
+        self.input_size = settings.input_size
+        self.calibration_temperature = settings.calibration_temperature
+        self.high_sensitivity_threshold = settings.high_sensitivity_threshold
+        self.high_specificity_threshold = settings.high_specificity_threshold
+        self.clinical_config_path = settings.clinical_config_path
+        self.enable_heuristic_regions = settings.enable_heuristic_regions
+        self.detector_model_path = settings.detector_model_path
+        self.detector_input_size = settings.detector_input_size
+        self.detector_input_width = self.detector_input_size
+        self.detector_input_height = self.detector_input_size
+        self.detector_conf_threshold = settings.detector_conf_threshold
+        self.detector_iou_threshold = settings.detector_iou_threshold
+        self.enable_tta = settings.enable_tta
+        self.enable_fp_reduction = settings.enable_fp_reduction
+        self.fp_min_lung_overlap = settings.fp_min_lung_overlap
+        self.prefer_cuda_ep = settings.prefer_cuda_ep
+        self.prefer_dml_ep = settings.prefer_dml_ep
+        self.enable_io_binding = settings.enable_io_binding
+        self.ort_cuda_device_id = settings.ort_cuda_device_id
+        self.ort_intra_threads = settings.ort_intra_threads
+        self.ort_inter_threads = settings.ort_inter_threads
+        self.ort_graph_optimization = settings.ort_graph_optimization
+        self.detector_profile_path = settings.detector_profile_path
+        self.detector_expected_sha256 = settings.detector_expected_sha256
+        self.enforce_detector_startup_check = settings.enforce_detector_startup_check
+        self.enforce_governance_gate = settings.enforce_governance_gate
+        self.clinical_governance_path = settings.clinical_governance_path
+        self.governance_min_site_count = settings.governance_min_site_count
+        self.governance_min_auroc = settings.governance_min_auroc
+        self.governance_min_sensitivity = settings.governance_min_sensitivity
+        self.governance_min_specificity = settings.governance_min_specificity
+        self.max_image_pixels = settings.max_image_pixels
+        self.task_thresholds: Dict[str, Dict[str, float]] = {
+            TASK_LESION: {
+                "high_sensitivity_threshold": self.high_sensitivity_threshold,
+                "high_specificity_threshold": self.high_specificity_threshold,
+            },
+            TASK_PNEUMONIA: {
+                "high_sensitivity_threshold": self.high_sensitivity_threshold,
+                "high_specificity_threshold": self.high_specificity_threshold,
+            },
+        }
+        self.config_source = "env-default"
+        self.clinical_stage = "RESEARCH_ONLY"
+        self.governance_gate_passed = True
+        self.governance_gate_message = "research-only mode"
+        self.detector_session: Optional[ort.InferenceSession] = None
+        self.detector_input_name: Optional[str] = None
+        self.detector_output_names: List[str] = []
+        self.detector_check_passed = False
+        self.detector_check_message = "detector not checked"
+        self.detector_sha256: Optional[str] = None
+        self.detector_profile: Dict[str, object] = {
+            "decoder_format": "auto",  # auto | yolo | xyxy_cls
+            "class_map": {
+                "0": LABEL_NODULE,
+                "1": LABEL_MASS,
+                "2": LABEL_OPACITY,
+                "3": LABEL_PNEUMONIA,
+            },
+            "input_scale": 1.0,
+            "input_mean": [0.0],
+            "input_std": [1.0],
+            "input_channels": 1,
+        }
+        self.session: Optional[ort.InferenceSession] = None
+        self.input_name: Optional[str] = None
+        self.output_names: List[str] = []
+        self.ort_available_providers: List[str] = ort.get_available_providers()
+        self.model_active_providers: List[str] = []
+        self.detector_active_providers: List[str] = []
+        self.model_error: Optional[str] = None
+        self.preprocessor = ImagePreprocessor(
+            input_size=self.input_size,
+            max_image_pixels=self.max_image_pixels,
+        )
+        self.postprocessor = InferencePostprocessor(
+            detector_input_width=self.detector_input_width,
+            detector_input_height=self.detector_input_height,
+            detector_conf_threshold=self.detector_conf_threshold,
+            detector_iou_threshold=self.detector_iou_threshold,
+            fp_min_lung_overlap=self.fp_min_lung_overlap,
+            enable_fp_reduction=self.enable_fp_reduction,
+            enable_heuristic_regions=self.enable_heuristic_regions,
+            detector_profile=self.detector_profile,
+            labels={
+                "pneumonia": LABEL_PNEUMONIA,
+                "nodule": LABEL_NODULE,
+                "mass": LABEL_MASS,
+                "opacity": LABEL_OPACITY,
+            },
+        )
+        self._try_load_model()
+
+    def _build_session_options(self) -> ort.SessionOptions:
+        so = ort.SessionOptions()
+        so.enable_mem_pattern = False
+        so.enable_cpu_mem_arena = True
+        so.intra_op_num_threads = self.ort_intra_threads
+        so.inter_op_num_threads = self.ort_inter_threads
+        level = self.ort_graph_optimization
+        if level == "disable":
+            so.graph_optimization_level = ort.GraphOptimizationLevel.ORT_DISABLE_ALL
+        elif level == "basic":
+            so.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_BASIC
+        elif level == "extended":
+            so.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_EXTENDED
+        else:
+            so.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+        return so
+
+    def _build_execution_providers(self) -> List[object]:
+        providers: List[object] = []
+        if self.prefer_cuda_ep and "CUDAExecutionProvider" in self.ort_available_providers:
+            providers.append(
+                (
+                    "CUDAExecutionProvider",
+                    {
+                        "device_id": self.ort_cuda_device_id,
+                        "cudnn_conv_algo_search": "HEURISTIC",
+                        "do_copy_in_default_stream": True,
+                    },
+                )
+            )
+        if self.prefer_dml_ep and "DmlExecutionProvider" in self.ort_available_providers:
+            providers.append("DmlExecutionProvider")
+        providers.append("CPUExecutionProvider")
+        return providers
+
+    @staticmethod
+    def _session_has_cuda_provider(session: Optional[ort.InferenceSession]) -> bool:
+        if session is None:
+            return False
+        return "CUDAExecutionProvider" in session.get_providers()
+
+    def _session_run(
+        self,
+        session: ort.InferenceSession,
+        input_name: str,
+        output_names: List[str],
+        input_tensor: np.ndarray,
+    ) -> List[np.ndarray]:
+        # Fast path: use IOBinding when CUDA EP is active to reduce host/device copy overhead.
+        if self.enable_io_binding and self._session_has_cuda_provider(session):
+            io_binding = session.io_binding()
+            io_binding.bind_cpu_input(input_name, input_tensor)
+            for out_name in output_names:
+                io_binding.bind_output(out_name, "cuda", self.ort_cuda_device_id)
+            session.run_with_iobinding(io_binding)
+            return [np.array(x) for x in io_binding.copy_outputs_to_cpu()]
+        return [np.array(x) for x in session.run(None, {input_name: input_tensor})]
+
+    @staticmethod
+    def _file_sha256(path: str) -> str:
+        h = hashlib.sha256()
+        with open(path, "rb") as f:
+            for chunk in iter(lambda: f.read(1024 * 1024), b""):
+                h.update(chunk)
+        return h.hexdigest().lower()
+
+    def _load_clinical_config(self) -> None:
+        if not os.path.exists(self.clinical_config_path):
+            return
+
+        try:
+            with open(self.clinical_config_path, "r", encoding="utf-8") as f:
+                payload = json.load(f)
+
+            global_cfg = payload.get("global", {})
+            if isinstance(global_cfg, dict):
+                temp = global_cfg.get("temperature")
+                if isinstance(temp, (int, float)) and temp > 0:
+                    self.calibration_temperature = float(temp)
+
+            tasks_cfg = payload.get("tasks", {})
+            if isinstance(tasks_cfg, dict):
+                for task in [TASK_PNEUMONIA, TASK_LESION]:
+                    task_cfg = tasks_cfg.get(task, {})
+                    if not isinstance(task_cfg, dict):
+                        continue
+                    hs = task_cfg.get("high_sensitivity_threshold")
+                    hp = task_cfg.get("high_specificity_threshold")
+                    if isinstance(hs, (int, float)):
+                        self.task_thresholds[task]["high_sensitivity_threshold"] = float(hs)
+                    if isinstance(hp, (int, float)):
+                        self.task_thresholds[task]["high_specificity_threshold"] = float(hp)
+
+            # keep aggregate compatibility fields bound to lesion task
+            self.high_sensitivity_threshold = self.task_thresholds[TASK_LESION]["high_sensitivity_threshold"]
+            self.high_specificity_threshold = self.task_thresholds[TASK_LESION]["high_specificity_threshold"]
+            self.config_source = self.clinical_config_path
+        except Exception as exc:
+            self.model_error = f"Clinical config load failed: {exc}"
+
+    def _load_governance_config(self) -> None:
+        if not os.path.exists(self.clinical_governance_path):
+            self.clinical_stage = "RESEARCH_ONLY"
+            self.governance_gate_passed = True
+            self.governance_gate_message = "governance file missing; stage forced to RESEARCH_ONLY"
+            return
+
+        try:
+            with open(self.clinical_governance_path, "r", encoding="utf-8") as f:
+                payload = json.load(f)
+            stage = str(payload.get("deploymentStage", "RESEARCH_ONLY")).upper()
+            allowed = {"RESEARCH_ONLY", "PILOT_DECISION_SUPPORT", "CLINICAL_DECISION_SUPPORT"}
+            self.clinical_stage = stage if stage in allowed else "RESEARCH_ONLY"
+            ok, msg = self._evaluate_governance_gate(payload)
+            self.governance_gate_passed = ok
+            self.governance_gate_message = msg
+            if self.enforce_governance_gate and not ok:
+                raise RuntimeError(f"Governance gate failed: {msg}")
+        except Exception as exc:
+            self.clinical_stage = "RESEARCH_ONLY"
+            self.governance_gate_passed = False
+            self.governance_gate_message = f"governance parse/eval failed: {exc}"
+
+    def _load_detector_profile(self) -> None:
+        if not os.path.exists(self.detector_profile_path):
+            return
+        try:
+            with open(self.detector_profile_path, "r", encoding="utf-8") as f:
+                payload = json.load(f)
+            if isinstance(payload, dict):
+                self.detector_profile = {**self.detector_profile, **payload}
+        except Exception as exc:
+            if self.enforce_detector_startup_check:
+                raise RuntimeError(f"Detector profile load failed: {exc}") from exc
+
+    def _evaluate_governance_gate(self, payload: Dict[str, object]) -> Tuple[bool, str]:
+        if self.clinical_stage == "RESEARCH_ONLY":
+            return True, "research-only mode"
+
+        validation = payload.get("validationEvidence", {})
+        if not isinstance(validation, dict):
+            return False, "validationEvidence missing"
+
+        external = validation.get("externalValidation", {})
+        if not isinstance(external, dict):
+            return False, "externalValidation missing"
+
+        site_count = int(external.get("siteCount", 0))
+        auroc = float(external.get("auroc", 0.0))
+        sensitivity = float(external.get("sensitivity", 0.0))
+        specificity = float(external.get("specificity", 0.0))
+
+        if site_count < self.governance_min_site_count:
+            return False, f"siteCount {site_count} < min {self.governance_min_site_count}"
+        if auroc < self.governance_min_auroc:
+            return False, f"auroc {auroc:.3f} < min {self.governance_min_auroc:.3f}"
+        if sensitivity < self.governance_min_sensitivity:
+            return False, f"sensitivity {sensitivity:.3f} < min {self.governance_min_sensitivity:.3f}"
+        if specificity < self.governance_min_specificity:
+            return False, f"specificity {specificity:.3f} < min {self.governance_min_specificity:.3f}"
+
+        regulatory = validation.get("regulatory", {})
+        if not isinstance(regulatory, dict):
+            return False, "regulatory section missing"
+
+        status = str(regulatory.get("status", "NOT_SUBMITTED")).upper()
+        if self.clinical_stage == "PILOT_DECISION_SUPPORT":
+            if status in {"NOT_SUBMITTED", "REJECTED"}:
+                return False, f"regulatory status {status} not acceptable for pilot"
+        if self.clinical_stage == "CLINICAL_DECISION_SUPPORT":
+            if status not in {"APPROVED", "CLEARED", "CERTIFIED"}:
+                return False, f"regulatory status {status} not acceptable for clinical"
+
+        return True, f"passed for stage {self.clinical_stage}"
+
+    def _try_load_model(self) -> None:
+        with self._init_lock:
+            self._load_clinical_config()
+            self._load_governance_config()
+            self._load_detector_profile()
+            resolved_path = self._resolve_model_path(self.model_path)
+            if not resolved_path:
+                self.model_error = "No ONNX model file found in configured path or models directory"
+                return
+
+            try:
+                so = self._build_session_options()
+                self.session = ort.InferenceSession(
+                    resolved_path,
+                    sess_options=so,
+                    providers=self._build_execution_providers(),
+                )
+                self.input_name = self.session.get_inputs()[0].name
+                self.output_names = [output.name for output in self.session.get_outputs()]
+                self.model_active_providers = list(self.session.get_providers())
+                self.model_path = resolved_path
+                self.model_error = None
+            except Exception as exc:
+                self.model_error = f"Failed to load model: {exc}"
+                self.session = None
+                self.input_name = None
+                self.output_names = []
+                self.model_active_providers = []
+
+            self._try_load_detector()
+
+    def ensure_ready(self) -> bool:
+        if self.session is None:
+            self._try_load_model()
+        return self.session is not None
+
+    def prediction_allowed(self) -> Tuple[bool, str]:
+        if self.session is None:
+            return False, "model unavailable"
+        if self.enforce_governance_gate and not self.governance_gate_passed:
+            return False, f"governance gate blocked: {self.governance_gate_message}"
+        return True, ""
+
+    def _try_load_detector(self) -> None:
+        resolved = self._resolve_model_path(self.detector_model_path)
+        if not resolved:
+            self.detector_session = None
+            self.detector_input_name = None
+            self.detector_output_names = []
+            self.detector_check_passed = False
+            self.detector_check_message = "detector model not found"
+            return
+        try:
+            so = self._build_session_options()
+            self.detector_session = ort.InferenceSession(
+                resolved,
+                sess_options=so,
+                providers=self._build_execution_providers(),
+            )
+            self.detector_input_name = self.detector_session.get_inputs()[0].name
+            self._sync_detector_input_shape()
+            self.detector_output_names = [o.name for o in self.detector_session.get_outputs()]
+            self.detector_active_providers = list(self.detector_session.get_providers())
+            self.detector_model_path = resolved
+            self.detector_sha256 = self._file_sha256(resolved)
+            if self.detector_expected_sha256 and self.detector_sha256 != self.detector_expected_sha256:
+                raise RuntimeError(
+                    f"detector sha256 mismatch: actual={self.detector_sha256} expected={self.detector_expected_sha256}"
+                )
+            ok, msg = self._run_detector_startup_check()
+            self.detector_check_passed = ok
+            self.detector_check_message = msg
+            if self.enforce_detector_startup_check and not ok:
+                raise RuntimeError(f"Detector startup check failed: {msg}")
+        except Exception as exc:
+            self.detector_session = None
+            self.detector_input_name = None
+            self.detector_output_names = []
+            self.detector_check_passed = False
+            self.detector_check_message = f"detector init or check failed: {exc}"
+            self.detector_active_providers = []
+
+    def _sync_detector_input_shape(self) -> None:
+        if self.detector_session is None:
+            return
+        shape = self.detector_session.get_inputs()[0].shape
+        if not isinstance(shape, list) or len(shape) < 4:
+            return
+
+        h = shape[2]
+        w = shape[3]
+        if isinstance(h, int) and h > 0:
+            self.detector_input_height = h
+        if isinstance(w, int) and w > 0:
+            self.detector_input_width = w
+        if self.detector_input_height == self.detector_input_width:
+            self.detector_input_size = self.detector_input_height
+        self.postprocessor.update_runtime(
+            detector_input_width=self.detector_input_width,
+            detector_input_height=self.detector_input_height,
+            detector_profile=self.detector_profile,
+        )
+
+    def _run_detector_startup_check(self) -> Tuple[bool, str]:
+        if self.detector_session is None or self.detector_input_name is None:
+            return False, "detector session unavailable"
+
+        try:
+            sample = np.random.rand(
+                1, 1, self.detector_input_height, self.detector_input_width
+            ).astype(np.float32)
+            outputs = self.detector_session.run(None, {self.detector_input_name: sample})
+            if not outputs:
+                return False, "detector returned no outputs"
+            primary = np.array(outputs[0])
+            shape = tuple(primary.shape)
+
+            # Accept [1, N, C], [1, C, N], [N, C], [C, N] with C >= 6.
+            if primary.ndim == 3 and primary.shape[0] == 1:
+                c1, c2 = primary.shape[1], primary.shape[2]
+                if c2 >= 6 or c1 >= 6:
+                    return True, f"compatible shape {shape}"
+                return False, f"incompatible 3D shape {shape}; expected channel dim >= 6"
+
+            if primary.ndim == 2:
+                if primary.shape[1] >= 6 or primary.shape[0] >= 6:
+                    return True, f"compatible shape {shape}"
+                return False, f"incompatible 2D shape {shape}; expected channel dim >= 6"
+
+            return False, f"unsupported output rank {primary.ndim} with shape {shape}"
+        except Exception as exc:
+            return False, f"runtime check error: {exc}"
+
+    @staticmethod
+    def _resolve_model_path(configured_path: str) -> Optional[str]:
+        if os.path.exists(configured_path):
+            return configured_path
+
+        candidates = sorted(glob("./models/*.onnx"))
+        return candidates[0] if candidates else None
+
+    def preprocess(self, image_bytes: bytes) -> np.ndarray:
+        return self.preprocessor.preprocess(image_bytes)
+
+    def preprocess_with_original(self, image_bytes: bytes) -> Tuple[np.ndarray, np.ndarray]:
+        return self.preprocessor.preprocess_with_original(image_bytes)
+
+    def estimate_lung_mask(self, image_u8: np.ndarray) -> np.ndarray:
+        return self.postprocessor.estimate_lung_mask(image_u8)
+
+    def assess_white_lung(self, image_u8: np.ndarray, opacity_score: float) -> Dict[str, object]:
+        return self.postprocessor.assess_white_lung(image_u8, opacity_score)
+
+    @staticmethod
+    def build_infection_coverage(
+        label_scores: Dict[str, float], white_lung_assessment: Dict[str, object]
+    ) -> Dict[str, float]:
+        return InferencePostprocessor.build_infection_coverage(
+            label_scores,
+            white_lung_assessment,
+            labels={
+                "pneumonia": LABEL_PNEUMONIA,
+                "nodule": LABEL_NODULE,
+                "mass": LABEL_MASS,
+                "opacity": LABEL_OPACITY,
+            },
+        )
+
+    @staticmethod
+    def apply_low_evidence_guard(
+        label_scores: Dict[str, float],
+        regions: List[Region],
+        white_lung_assessment: Dict[str, object],
+    ) -> Tuple[Dict[str, float], bool]:
+        return InferencePostprocessor.apply_low_evidence_guard(
+            label_scores,
+            regions,
+            white_lung_assessment,
+            labels={
+                "pneumonia": LABEL_PNEUMONIA,
+                "nodule": LABEL_NODULE,
+                "mass": LABEL_MASS,
+                "opacity": LABEL_OPACITY,
+            },
+        )
+
+    @staticmethod
+    def _safe_logit(prob: float) -> float:
+        clipped = float(np.clip(prob, 1e-6, 1.0 - 1e-6))
+        return float(np.log(clipped / (1.0 - clipped)))
+
+    def _calibrated_sigmoid(self, raw_logit: float) -> float:
+        temperature = max(self.calibration_temperature, 0.05)
+        calibrated = raw_logit / temperature
+        prob = 1.0 / (1.0 + np.exp(-calibrated))
+        return float(np.clip(prob, 0.0, 1.0))
+
+    def _fallback_label_scores(self, image_norm: np.ndarray) -> Dict[str, float]:
+        # Deterministic fallback using image texture only (no random behavior).
+        laplacian = cv2.Laplacian((image_norm * 255).astype(np.uint8), cv2.CV_64F)
+        complexity = float(np.std(laplacian) / 255.0)
+        high_intensity_ratio = float((image_norm > 0.82).mean())
+        opacity_like = float(np.clip((complexity * 0.8 + high_intensity_ratio * 1.2), 0.01, 0.99))
+        nodule = float(np.clip(0.12 + complexity * 0.65, 0.01, 0.95))
+        mass = float(np.clip(0.08 + high_intensity_ratio * 1.35, 0.01, 0.95))
+        pneumonia = float(np.clip(0.10 + opacity_like * 0.75, 0.01, 0.95))
+        return {
+            LABEL_PNEUMONIA: self._calibrated_sigmoid(self._safe_logit(pneumonia)),
+            LABEL_NODULE: self._calibrated_sigmoid(self._safe_logit(nodule)),
+            LABEL_MASS: self._calibrated_sigmoid(self._safe_logit(mass)),
+            LABEL_OPACITY: self._calibrated_sigmoid(self._safe_logit(opacity_like)),
+        }
+
+    def _decode_multitask_output(self, output: np.ndarray, image_norm: np.ndarray) -> Dict[str, float]:
+        if output.size >= 4:
+            # Expected ordering: [Pneumonia, Nodule, Mass, Opacity] logits.
+            return {
+                TASK_LABELS[idx]: self._calibrated_sigmoid(float(output[idx]))
+                for idx in range(4)
+            }
+
+        if output.size >= 2:
+            # Legacy binary output; map to meaningful scores conservatively.
+            exp = np.exp(output - np.max(output))
+            probs = exp / np.sum(exp)
+            disease_prob = float(np.clip(probs[1], 1e-6, 1.0 - 1e-6))
+            calibrated = self._calibrated_sigmoid(self._safe_logit(disease_prob))
+            return {
+                LABEL_PNEUMONIA: float(np.clip(calibrated * 0.85, 0.01, 0.99)),
+                LABEL_NODULE: float(np.clip(calibrated * 0.80, 0.01, 0.99)),
+                LABEL_MASS: float(np.clip(calibrated * 0.90, 0.01, 0.99)),
+                LABEL_OPACITY: float(np.clip(calibrated * 0.88, 0.01, 0.99)),
+            }
+
+        if output.size == 1:
+            calibrated = self._calibrated_sigmoid(float(output[0]))
+            return {
+                LABEL_PNEUMONIA: float(np.clip(calibrated * 0.85, 0.01, 0.99)),
+                LABEL_NODULE: float(np.clip(calibrated * 0.80, 0.01, 0.99)),
+                LABEL_MASS: float(np.clip(calibrated * 0.90, 0.01, 0.99)),
+                LABEL_OPACITY: float(np.clip(calibrated * 0.88, 0.01, 0.99)),
+            }
+
+        return self._fallback_label_scores(image_norm)
+
+    def _forward_multitask_scores(self, image_norm: np.ndarray) -> Dict[str, float]:
+        if self.session is None or self.input_name is None:
+            return self._fallback_label_scores(image_norm)
+
+        input_tensor = image_norm[np.newaxis, np.newaxis, :, :].astype(np.float32)
+        outputs = self._session_run(
+            session=self.session,
+            input_name=self.input_name,
+            output_names=self.output_names,
+            input_tensor=input_tensor,
+        )
+        output = outputs[0].reshape(-1)
+        return self._decode_multitask_output(output, image_norm)
+
+    def infer_multitask_scores(self, image_norm: np.ndarray) -> Dict[str, float]:
+        if not self.enable_tta:
+            return self._forward_multitask_scores(image_norm)
+
+        # Two-view TTA for stability: original + horizontal flip.
+        base = self._forward_multitask_scores(image_norm)
+        flipped = self._forward_multitask_scores(np.fliplr(image_norm).copy())
+        return {
+            label: float(np.clip((base.get(label, 0.0) + flipped.get(label, 0.0)) * 0.5, 0.0, 1.0))
+            for label in TASK_LABELS
+        }
+
+    @staticmethod
+    def _calculate_iou(box_a: Region, box_b: Region) -> float:
+        ax1, ay1 = box_a.x, box_a.y
+        ax2, ay2 = box_a.x + box_a.width, box_a.y + box_a.height
+        bx1, by1 = box_b.x, box_b.y
+        bx2, by2 = box_b.x + box_b.width, box_b.y + box_b.height
+
+        inter_x1 = max(ax1, bx1)
+        inter_y1 = max(ay1, by1)
+        inter_x2 = min(ax2, bx2)
+        inter_y2 = min(ay2, by2)
+
+        inter_w = max(0.0, inter_x2 - inter_x1)
+        inter_h = max(0.0, inter_y2 - inter_y1)
+        inter_area = inter_w * inter_h
+
+        area_a = box_a.width * box_a.height
+        area_b = box_b.width * box_b.height
+        union = area_a + area_b - inter_area
+        if union <= 0:
+            return 0.0
+        return inter_area / union
+
+    def _nms(self, candidates: List[Region], iou_threshold: float = 0.35) -> List[Region]:
+        if not candidates:
+            return []
+
+        sorted_candidates = sorted(candidates, key=lambda region: region.confidence, reverse=True)
+        kept: List[Region] = []
+        while sorted_candidates:
+            current = sorted_candidates.pop(0)
+            kept.append(current)
+            sorted_candidates = [
+                candidate
+                for candidate in sorted_candidates
+                if self._calculate_iou(current, candidate) < iou_threshold
+            ]
+        return kept
+
+    def _nms_by_label(self, regions: List[Region], iou_threshold: float) -> List[Region]:
+        grouped: Dict[str, List[Region]] = {}
+        for r in regions:
+            grouped.setdefault(r.label, []).append(r)
+        kept: List[Region] = []
+        for label_regions in grouped.values():
+            kept.extend(self._nms(label_regions, iou_threshold=iou_threshold))
+        kept.sort(key=lambda r: r.confidence, reverse=True)
+        return kept
+
+    @staticmethod
+    def _region_lung_overlap(mask: np.ndarray, region: Region) -> float:
+        h, w = mask.shape
+        x1 = int(np.clip(region.x, 0, w - 1))
+        y1 = int(np.clip(region.y, 0, h - 1))
+        x2 = int(np.clip(region.x + region.width, x1 + 1, w))
+        y2 = int(np.clip(region.y + region.height, y1 + 1, h))
+        roi = mask[y1:y2, x1:x2]
+        if roi.size == 0:
+            return 0.0
+        return float(np.mean(roi > 0))
+
+    def _reduce_false_positives(
+        self,
+        regions: List[Region],
+        image_original: np.ndarray,
+        label_scores: Dict[str, float],
+    ) -> List[Region]:
+        if not self.enable_fp_reduction or not regions:
+            return regions
+
+        h, w = image_original.shape
+        lung_mask = self.estimate_lung_mask(image_original)
+        kept: List[Region] = []
+        fallback_candidates: List[Tuple[Region, float]] = []
+        for r in regions:
+            overlap = self._region_lung_overlap(lung_mask, r)
+            fallback_candidates.append((r, overlap))
+            label_prior = float(label_scores.get(r.label, label_scores.get(LABEL_OPACITY, 0.0)))
+            dynamic_min_conf = float(np.clip(max(0.25, label_prior * 0.45), 0.25, 0.65))
+
+            x1 = r.x
+            y1 = r.y
+            x2 = r.x + r.width
+            y2 = r.y + r.height
+            near_border = x1 <= 2 or y1 <= 2 or x2 >= (w - 2) or y2 >= (h - 2)
+
+            if overlap < self.fp_min_lung_overlap and r.confidence < 0.90:
+                continue
+            if r.confidence < dynamic_min_conf and overlap < 0.45:
+                continue
+            if near_border and r.confidence < 0.85:
+                continue
+
+            fused_conf = float(np.clip(0.7 * r.confidence + 0.3 * label_prior, 0.0, 1.0))
+            kept.append(
+                Region(
+                    x=r.x,
+                    y=r.y,
+                    width=r.width,
+                    height=r.height,
+                    confidence=fused_conf,
+                    label=r.label,
+                )
+            )
+
+        if not kept and fallback_candidates:
+            # Safety fallback: keep a tiny subset to avoid empty localization results.
+            fallback_candidates.sort(key=lambda t: t[0].confidence, reverse=True)
+            rescued: List[Region] = []
+            for r, overlap in fallback_candidates:
+                if overlap >= 0.05:
+                    rescued.append(r)
+                if len(rescued) >= 2:
+                    break
+            if not rescued:
+                rescued = [fallback_candidates[0][0]]
+            kept = rescued
+
+        return self._nms_by_label(kept, iou_threshold=self.detector_iou_threshold)
+
+    @staticmethod
+    def _label_from_class_id(class_id: int) -> str:
+        mapping = {
+            0: LABEL_NODULE,
+            1: LABEL_MASS,
+            2: LABEL_OPACITY,
+            3: LABEL_PNEUMONIA,
+        }
+        return mapping.get(class_id, LABEL_OPACITY)
+
+    def _label_from_profile(self, class_id: int) -> str:
+        class_map = self.detector_profile.get("class_map", {})
+        if isinstance(class_map, dict):
+            mapped = class_map.get(str(class_id))
+            if isinstance(mapped, str) and mapped:
+                return mapped
+        return self._label_from_class_id(class_id)
+
+    def _decode_detector_output(
+        self,
+        output: np.ndarray,
+        orig_w: int,
+        orig_h: int,
+    ) -> List[Region]:
+        regions: List[Region] = []
+        out = np.array(output)
+        if out.ndim == 3 and out.shape[0] == 1:
+            out = out[0]
+
+        decoder_format = str(self.detector_profile.get("decoder_format", "auto")).lower()
+
+        # YOLO-style: [C, N] => transpose to [N, C]
+        if out.ndim == 2 and out.shape[0] < out.shape[1] and out.shape[0] >= 6:
+            out = out.T
+
+        if out.ndim != 2:
+            return regions
+
+        det_w = self.detector_input_width
+        det_h = self.detector_input_height
+        sx = orig_w / max(det_w, 1)
+        sy = orig_h / max(det_h, 1)
+
+        for row in out:
+            if row.shape[0] < 6:
+                continue
+
+            # format A: xyxy + score + class
+            if decoder_format == "xyxy_cls" or (decoder_format == "auto" and row.shape[0] <= 8):
+                x1, y1, x2, y2, score, cls = row[:6]
+                conf = float(score)
+                class_id = int(cls)
+            else:
+                # format B (YOLOv8): cx,cy,w,h + class_probs...
+                cx, cy, bw, bh = row[:4]
+                class_scores = row[4:]
+                class_id = int(np.argmax(class_scores))
+                conf = float(class_scores[class_id])
+                x1 = cx - bw / 2.0
+                y1 = cy - bh / 2.0
+                x2 = cx + bw / 2.0
+                y2 = cy + bh / 2.0
+
+            if conf < self.detector_conf_threshold:
+                continue
+
+            x1 = float(np.clip(x1 * sx, 0, orig_w - 1))
+            y1 = float(np.clip(y1 * sy, 0, orig_h - 1))
+            x2 = float(np.clip(x2 * sx, 0, orig_w - 1))
+            y2 = float(np.clip(y2 * sy, 0, orig_h - 1))
+            w = max(1.0, x2 - x1)
+            h = max(1.0, y2 - y1)
+
+            regions.append(
+                Region(
+                    x=x1,
+                    y=y1,
+                    width=w,
+                    height=h,
+                    confidence=float(np.clip(conf, 0.0, 1.0)),
+                    label=self._label_from_profile(class_id),
+                )
+            )
+
+        return self._nms_by_label(regions, iou_threshold=self.detector_iou_threshold)
+
+    def detect_regions_with_detector(
+        self, image_original: np.ndarray, label_scores: Optional[Dict[str, float]] = None
+    ) -> Tuple[List[Region], Dict[str, float]]:
+        if self.detector_session is None or self.detector_input_name is None:
+            return [], {label: 0.0 for label in TASK_LABELS}
+
+        resized = cv2.resize(image_original, (self.detector_input_width, self.detector_input_height))
+        normalized = resized.astype(np.float32) / max(float(self.detector_profile.get("input_scale", 1.0)), 1e-6)
+        input_channels = int(self.detector_profile.get("input_channels", 1))
+        input_mean = self.detector_profile.get("input_mean", [0.0])
+        input_std = self.detector_profile.get("input_std", [1.0])
+        if not isinstance(input_mean, list) or not input_mean:
+            input_mean = [0.0]
+        if not isinstance(input_std, list) or not input_std:
+            input_std = [1.0]
+
+        if input_channels == 3:
+            rgb = np.stack([normalized, normalized, normalized], axis=0).astype(np.float32)
+            means = np.array((input_mean + input_mean[:1] * 3)[:3], dtype=np.float32).reshape(3, 1, 1)
+            stds = np.array((input_std + input_std[:1] * 3)[:3], dtype=np.float32).reshape(3, 1, 1)
+            chw = (rgb - means) / np.maximum(stds, 1e-6)
+            input_tensor = chw[np.newaxis, :, :, :]
+        else:
+            mean = float(input_mean[0])
+            std = float(input_std[0]) if float(input_std[0]) != 0 else 1.0
+            chw = ((normalized - mean) / std).astype(np.float32)
+            input_tensor = chw[np.newaxis, np.newaxis, :, :]
+
+        input_tensor = input_tensor.astype(np.float32)
+        outputs = self._session_run(
+            session=self.detector_session,
+            input_name=self.detector_input_name,
+            output_names=self.detector_output_names,
+            input_tensor=input_tensor,
+        )
+        decoded = self._decode_detector_output(outputs[0], orig_w=image_original.shape[1], orig_h=image_original.shape[0])
+        decoded = self._reduce_false_positives(decoded, image_original, label_scores or {})
+        decoded = decoded[:10]
+        scores = {label: 0.0 for label in TASK_LABELS}
+        for r in decoded:
+            scores[r.label] = max(scores.get(r.label, 0.0), r.confidence)
+        return decoded, scores
+
+    def detect_regions(self, image_original: np.ndarray, label_scores: Dict[str, float]) -> Tuple[List[Region], Dict[str, float]]:
+        if not self.enable_heuristic_regions:
+            return [], {label: 0.0 for label in TASK_LABELS}
+
+        image_u8 = image_original.astype(np.uint8)
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        enhanced = clahe.apply(image_u8)
+        threshold_value = int(np.percentile(enhanced, 92))
+        _, binary = cv2.threshold(enhanced, threshold_value, 255, cv2.THRESH_BINARY)
+        kernel = np.ones((5, 5), np.uint8)
+        binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel)
+        binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel)
+        contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        regions: List[Region] = []
+        h, w = image_u8.shape
+        min_area = (h * w) * 0.0008
+        max_area = (h * w) * 0.18
+
+        for cnt in contours:
+            x, y, bw, bh = cv2.boundingRect(cnt)
+            area = bw * bh
+            if area < min_area or area > max_area:
+                continue
+            roi = enhanced[y : y + bh, x : x + bw]
+            confidence = float(np.clip(roi.mean() / 255.0, 0.2, 0.98))
+            regions.append(
+                Region(
+                    x=float(x),
+                    y=float(y),
+                    width=float(bw),
+                    height=float(bh),
+                    confidence=confidence,
+                    label=LABEL_OPACITY,
+                )
+            )
+
+        nms_regions = self._nms(regions, iou_threshold=0.35)[:5]
+        nms_regions = self._reduce_false_positives(nms_regions, image_original, label_scores)[:5]
+        region_scores = {label: 0.0 for label in TASK_LABELS}
+        for region in nms_regions:
+            region_scores[region.label] = max(region_scores[region.label], region.confidence)
+        return nms_regions, region_scores
+
+

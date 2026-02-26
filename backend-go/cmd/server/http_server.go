@@ -196,8 +196,14 @@ func newRouter(a *app, cfg *config.Config) *gin.Engine {
 		authed.Use(a.authRequired())
 		authed.Use(a.idempotencyMiddleware())
 		authed.GET("/images", a.listImages)
+		authed.GET("/images/:id", a.getImageByID)
 		authed.POST("/images/upload", a.uploadImage)
 		authed.GET("/images/:id/file", a.imageFile)
+		authed.GET("/users/me", a.getMe)
+		authed.PATCH("/users/me", a.updateMe)
+		authed.GET("/compliance/clinical-scope", a.clinicalScopeHandler)
+		authed.POST("/compliance/consents", a.acceptConsent)
+		authed.GET("/compliance/consents/latest", a.latestConsent)
 		a.registerRestRoutes(authed)
 	}
 	return r

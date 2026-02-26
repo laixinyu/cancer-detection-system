@@ -17,6 +17,8 @@ from torch.utils.data import DataLoader, Dataset, WeightedRandomSampler
 from torchvision import models, transforms
 from tqdm import tqdm
 
+from app.preprocess import ImagePreprocessor
+
 
 CLASS_NAMES = ["Pneumonia", "Nodule", "Mass", "Lung Opacity"]
 BACKBONE_CHOICES = [
@@ -70,7 +72,9 @@ class NihCxrDataset(Dataset):
 
     def __getitem__(self, index: int) -> Tuple[torch.Tensor, torch.Tensor]:
         sample = self.samples[index]
-        img = Image.open(sample.image_path).convert("L")
+        raw = sample.image_path.read_bytes()
+        gray = ImagePreprocessor.read_grayscale(raw)
+        img = Image.fromarray(gray, mode="L")
         x = self.transform(img)  # [1, H, W] in [0,1]
         y = torch.from_numpy(sample.target.astype(np.float32))
         return x, y

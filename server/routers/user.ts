@@ -1,21 +1,9 @@
 import { createTRPCRouter, protectedProcedure } from '../trpc'
 import { z } from 'zod'
+import { backendRequest } from '@/server/backend-client'
 
 export const userRouter = createTRPCRouter({
-  me: protectedProcedure.query(async ({ ctx }) => {
-    const user = await ctx.prisma.user.findUnique({
-      where: { id: ctx.session.user.id },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        role: true,
-        phone: true,
-        createdAt: true,
-      },
-    })
-    return user
-  }),
+  me: protectedProcedure.query(async ({ ctx }) => backendRequest<any>(ctx, '/users/me')),
 
   updateProfile: protectedProcedure
     .input(
@@ -24,11 +12,10 @@ export const userRouter = createTRPCRouter({
         phone: z.string().optional(),
       })
     )
-    .mutation(async ({ ctx, input }) => {
-      const user = await ctx.prisma.user.update({
-        where: { id: ctx.session.user.id },
-        data: input,
+    .mutation(async ({ ctx, input }) =>
+      backendRequest<any>(ctx, '/users/me', {
+        method: 'PATCH',
+        body: input,
       })
-      return user
-    }),
+    ),
 })

@@ -99,15 +99,77 @@ services:
     container_name: cancer-detection-backend-go
     environment:
       PORT: 8080
-      DATABASE_URL: ${DATABASE_URL:-postgresql://cancer_user:cancer_password@postgres:5432/cancer_detection}
+      GATEWAY_DATABASE_URL: ${GATEWAY_DATABASE_URL:-postgresql://cancer_user:cancer_password@postgres:5432/cancer_detection}
       AI_SERVICE_URL: ${AI_SERVICE_URL:-http://ai-service:8000}
       BACKEND_JWT_SECRET: ${BACKEND_JWT_SECRET:-change-me-in-production}
+      MICROSERVICE_MODE: ${MICROSERVICE_MODE:-strict}
+      DETECTION_SERVICE_URL: ${DETECTION_SERVICE_URL:-http://detection-service:8081}
+      REPORT_SERVICE_URL: ${REPORT_SERVICE_URL:-http://report-service:8082}
+      GOVERNANCE_SERVICE_URL: ${GOVERNANCE_SERVICE_URL:-http://governance-service:8083}
+      CACHE_BACKEND: ${CACHE_BACKEND:-redis}
+      REDIS_ADDR: ${REDIS_ADDR:-redis:6379}
       UPLOAD_DIR: /app/public/uploads
       UPLOAD_PUBLIC_PREFIX: /uploads
     ports:
       - "127.0.0.1:8080:8080"
     volumes:
       - ./public/uploads:/app/public/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      ai-service:
+        condition: service_healthy
+      detection-service:
+        condition: service_started
+      report-service:
+        condition: service_started
+      governance-service:
+        condition: service_started
+
+  detection-service:
+    build:
+      context: ./backend-go
+      dockerfile: Dockerfile
+    container_name: cancer-detection-detection-service
+    command: ["/app/detection-service"]
+    environment:
+      PORT: 8081
+      GRPC_PORT: 9081
+      DETECTION_DATABASE_URL: ${DETECTION_DATABASE_URL:-postgresql://cancer_user:cancer_password@postgres:5432/cancer_detection}
+      BACKEND_JWT_SECRET: ${BACKEND_JWT_SECRET:-change-me-in-production}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  report-service:
+    build:
+      context: ./backend-go
+      dockerfile: Dockerfile
+    container_name: cancer-detection-report-service
+    command: ["/app/report-service"]
+    environment:
+      PORT: 8082
+      GRPC_PORT: 9082
+      REPORT_DATABASE_URL: ${REPORT_DATABASE_URL:-postgresql://cancer_user:cancer_password@postgres:5432/cancer_detection}
+      BACKEND_JWT_SECRET: ${BACKEND_JWT_SECRET:-change-me-in-production}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  governance-service:
+    build:
+      context: ./backend-go
+      dockerfile: Dockerfile
+    container_name: cancer-detection-governance-service
+    command: ["/app/governance-service"]
+    environment:
+      PORT: 8083
+      GRPC_PORT: 9083
+      GOVERNANCE_DATABASE_URL: ${GOVERNANCE_DATABASE_URL:-postgresql://cancer_user:cancer_password@postgres:5432/cancer_detection}
+      BACKEND_JWT_SECRET: ${BACKEND_JWT_SECRET:-change-me-in-production}
+      AI_SERVICE_URL: ${AI_SERVICE_URL:-http://ai-service:8000}
     depends_on:
       postgres:
         condition: service_healthy

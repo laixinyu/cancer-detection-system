@@ -1,7 +1,7 @@
 import { TRPCError } from '@trpc/server'
-import { Prisma } from '@prisma/client'
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
+import { backendRequest } from '@/server/backend-client'
 
 export const auditRouter = createTRPCRouter({
   list: protectedProcedure
@@ -23,39 +23,15 @@ export const auditRouter = createTRPCRouter({
         })
       }
 
-      const where: Prisma.AuditLogWhereInput = {
-        ...(input.action && { action: input.action }),
-        ...(input.entityType && { entityType: input.entityType }),
-        ...(input.entityId && { entityId: input.entityId }),
-        ...(input.result && { result: input.result }),
-      }
-
-      const logs = await ctx.prisma.auditLog.findMany({
-        where,
-        take: input.limit + 1,
-        cursor: input.cursor ? { id: input.cursor } : undefined,
-        orderBy: { createdAt: 'desc' },
-        include: {
-          actorUser: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-              role: true,
-            },
-          },
+      return backendRequest<{ logs: any[]; nextCursor?: string | null }>(ctx, '/audits', {
+        query: {
+          action: input.action,
+          entityType: input.entityType,
+          entityId: input.entityId,
+          result: input.result,
+          limit: input.limit,
+          cursor: input.cursor,
         },
       })
-
-      let nextCursor: string | undefined
-      if (logs.length > input.limit) {
-        const nextItem = logs.pop()
-        nextCursor = nextItem?.id
-      }
-
-      return {
-        logs,
-        nextCursor,
-      }
     }),
 })

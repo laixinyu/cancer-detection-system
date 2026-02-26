@@ -3,7 +3,6 @@ import { type Session } from 'next-auth'
 import { getServerSession } from 'next-auth'
 import superjson from 'superjson'
 import { ZodError } from 'zod'
-import { prisma } from '@/lib/prisma'
 import { authOptions } from '@/lib/auth'
 
 interface CreateContextOptions {
@@ -13,7 +12,6 @@ interface CreateContextOptions {
 export const createInnerTRPCContext = (opts: CreateContextOptions) => {
   return {
     session: opts.session,
-    prisma,
   }
 }
 
