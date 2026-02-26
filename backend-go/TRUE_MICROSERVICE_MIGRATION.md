@@ -32,6 +32,9 @@
    - `backend-go/ops/alerts/prometheus-microservice-rules.yml`
    - `backend-go/ops/templates/SERVICE_SLO_TEMPLATE.md`
    - `backend-go/ops/templates/FAILOVER_DRILL_TEMPLATE.md`
+8. 存储边界收敛：
+   - 上传与读取改为 S3/MinIO 对象存储
+   - 移除对本地 `public/uploads` 的运行时依赖
 
 ## 下一步（持续优化）
 

@@ -90,7 +90,7 @@ flowchart TB
 - 前端：Next.js 覆盖患者、医生、管理员三类角色。
 - 后端：Go Gin Gateway + detection/report/governance 三服务为唯一业务入口；Next.js 仅承载页面与会话能力。
 - AI 服务：FastAPI 暴露 `/predict` 与 `/health`，输出多任务分数、候选区域与筛查摘要。
-- 数据与存储：PostgreSQL 按服务拆分（`GATEWAY/DETECTION/REPORT/GOVERNANCE_DATABASE_URL`），Redis 用于缓存与事件流，影像文件目标存储为 S3/MinIO（当前可兼容本地目录）。
+- 数据与存储：PostgreSQL 按服务拆分（`GATEWAY/DETECTION/REPORT/GOVERNANCE_DATABASE_URL`），Redis 用于缓存与事件流，影像文件统一存储在 S3/MinIO 对象存储。
 
 ## 快速开始
 

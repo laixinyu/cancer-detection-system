@@ -15,6 +15,7 @@
 - 追踪头：`X-Request-Id`（服务端会回传）
 - 链路追踪：支持 W3C Trace Context（`traceparent`）
 - 内部通信：网关到 `detection/report/governance` 微服务优先使用 gRPC
+- 文件存储：影像文件由网关写入 S3/MinIO，对外仍通过 `/api/v1/images/:id/file` 访问
 
 ## 2. 公共系统接口（无需登录）
 

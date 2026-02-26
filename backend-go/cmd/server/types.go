@@ -11,6 +11,7 @@ import (
 
 	"cancer-detection-backend/internal/cache"
 	"cancer-detection-backend/internal/events"
+	"cancer-detection-backend/internal/objectstore"
 	"cancer-detection-backend/internal/observability"
 	"cancer-detection-backend/internal/repository"
 	"cancer-detection-backend/internal/resilience"
@@ -48,8 +49,8 @@ type app struct {
 	detectionServiceURL  string
 	reportServiceURL     string
 	governanceServiceURL string
-	uploadDir            string
 	uploadPrefix         string
+	objectStore          objectstore.Store
 	httpClient           *http.Client
 	inboundLimiter       *resilience.KeyedLimiter
 	aiLimiter            *resilience.KeyedLimiter

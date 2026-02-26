@@ -6,7 +6,6 @@ package service
 import (
 	"context"
 	"errors"
-	"strings"
 
 	"cancer-detection-backend/internal/domain"
 	"cancer-detection-backend/internal/repository"
@@ -66,16 +65,13 @@ func (s *UploadService) CreateDetection(ctx context.Context, row *domain.Detecti
 	return s.repo.CreateDetection(ctx, row)
 }
 
-func (s *UploadService) GetImageFileMeta(ctx context.Context, id, role, userID, uploadPrefix string) (*domain.Image, error) {
+func (s *UploadService) GetImageFileMeta(ctx context.Context, id, role, userID string) (*domain.Image, error) {
 	img, err := s.repo.GetImageByID(ctx, id)
 	if err != nil {
 		return nil, err
 	}
 	if role == "PATIENT" && img.UploadedBy != userID {
 		return nil, errors.New("forbidden")
-	}
-	if !strings.HasPrefix(img.FilePath, uploadPrefix+"/") {
-		return nil, errors.New("unsupported storage path")
 	}
 	return img, nil
 }

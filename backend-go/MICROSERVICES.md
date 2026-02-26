@@ -112,6 +112,21 @@ graph TB
 - 认证、上传、AI 调用链路不走缓存，保证强一致与安全边界。
 - 网关在本地 handler、gRPC 桥接、HTTP 代理三种路由模式下统一执行缓存命中与写后失效。
 
+## 对象存储（S3/MinIO）
+
+- 影像上传与读取链路已统一走对象存储，不再依赖本地 `public/uploads`。
+- 网关通过 S3 兼容接口进行对象写入与读取。
+- 关键环境变量：
+  - `STORAGE_BACKEND=s3`
+  - `S3_ENDPOINT`
+  - `S3_REGION`
+  - `S3_BUCKET`
+  - `S3_ACCESS_KEY_ID`
+  - `S3_SECRET_ACCESS_KEY`
+  - `S3_USE_PATH_STYLE`
+  - `S3_USE_TLS`
+  - `UPLOAD_PUBLIC_PREFIX`（对象 key 前缀）
+
 ## gRPC 传输安全
 
 - 默认策略：

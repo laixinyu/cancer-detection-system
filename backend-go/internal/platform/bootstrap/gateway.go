@@ -14,6 +14,7 @@ import (
 
 	"cancer-detection-backend/internal/cache"
 	"cancer-detection-backend/internal/config"
+	"cancer-detection-backend/internal/objectstore"
 	"cancer-detection-backend/internal/observability"
 	"cancer-detection-backend/internal/platform/gormdb"
 	"cancer-detection-backend/internal/repository"
@@ -38,6 +39,7 @@ type GatewayDependencies struct {
 	Metrics          *observability.Registry
 	Logger           *slog.Logger
 	HTTPClient       *http.Client
+	ObjectStore      objectstore.Store
 }
 
 func BuildGateway(ctx context.Context, cfg *config.Config) (*GatewayDependencies, error) {
@@ -50,11 +52,6 @@ func BuildGateway(ctx context.Context, cfg *config.Config) (*GatewayDependencies
 		db.Close()
 		return nil, err
 	}
-	if err := os.MkdirAll(cfg.UploadDir, 0o755); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("init upload dir: %w", err)
-	}
-
 	var appCache cache.Cache
 	switch strings.ToLower(strings.TrimSpace(cfg.CacheBackend)) {
 	case "none", "noop":
@@ -79,6 +76,19 @@ func BuildGateway(ctx context.Context, cfg *config.Config) (*GatewayDependencies
 	}
 
 	opsSvc := service.NewOpsService(repository.NewGormOpsRepository(gdb))
+	store, err := objectstore.NewS3(ctx, objectstore.S3Config{
+		Endpoint:     cfg.S3Endpoint,
+		Region:       cfg.S3Region,
+		Bucket:       cfg.S3Bucket,
+		AccessKeyID:  cfg.S3AccessKeyID,
+		SecretKey:    cfg.S3SecretAccessKey,
+		UsePathStyle: cfg.S3UsePathStyle,
+		UseTLS:       cfg.S3UseTLS,
+	})
+	if err != nil {
+		db.Close()
+		return nil, fmt.Errorf("init object store: %w", err)
+	}
 	deps := &GatewayDependencies{
 		DB:               db,
 		ORM:              gdb,
@@ -94,6 +104,7 @@ func BuildGateway(ctx context.Context, cfg *config.Config) (*GatewayDependencies
 		Metrics:          observability.NewRegistry(),
 		Logger:           buildLogger(cfg.LogLevel),
 		HTTPClient:       &http.Client{Timeout: 25 * time.Second},
+		ObjectStore:      store,
 	}
 	return deps, nil
 }

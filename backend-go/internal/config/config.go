@@ -45,8 +45,15 @@ type Config struct {
 	IdempotencyEnabled    bool
 	IdempotencyRequired   bool
 	IdempotencyTTL        time.Duration
-	UploadDir             string
 	UploadPublicPrefix    string
+	StorageBackend        string
+	S3Endpoint            string
+	S3Region              string
+	S3Bucket              string
+	S3AccessKeyID         string
+	S3SecretAccessKey     string
+	S3UsePathStyle        bool
+	S3UseTLS              bool
 	ReadTimeout           time.Duration
 	WriteTimeout          time.Duration
 	IdleTimeout           time.Duration
@@ -100,6 +107,10 @@ func Load() (*Config, error) {
 			cacheBackend = "memory"
 		}
 	}
+	storageBackend := strings.ToLower(strings.TrimSpace(envOr("STORAGE_BACKEND", "s3")))
+	if storageBackend != "s3" {
+		return nil, fmt.Errorf("STORAGE_BACKEND must be s3")
+	}
 
 	cfg := &Config{
 		AppEnv:                appEnv,
@@ -135,8 +146,15 @@ func Load() (*Config, error) {
 		IdempotencyEnabled:    parseBoolEnv("IDEMPOTENCY_ENABLED", true),
 		IdempotencyRequired:   parseBoolEnv("IDEMPOTENCY_REQUIRED", true),
 		IdempotencyTTL:        time.Duration(parseIntEnv("IDEMPOTENCY_TTL_SECONDS", 86400)) * time.Second,
-		UploadDir:             envOr("UPLOAD_DIR", "public/uploads"),
 		UploadPublicPrefix:    strings.TrimRight(envOr("UPLOAD_PUBLIC_PREFIX", "/uploads"), "/"),
+		StorageBackend:        storageBackend,
+		S3Endpoint:            strings.TrimSpace(envOr("S3_ENDPOINT", "http://localhost:9000")),
+		S3Region:              strings.TrimSpace(envOr("S3_REGION", "us-east-1")),
+		S3Bucket:              strings.TrimSpace(envOr("S3_BUCKET", "cancer-images")),
+		S3AccessKeyID:         strings.TrimSpace(envOr("S3_ACCESS_KEY_ID", "")),
+		S3SecretAccessKey:     strings.TrimSpace(envOr("S3_SECRET_ACCESS_KEY", "")),
+		S3UsePathStyle:        parseBoolEnv("S3_USE_PATH_STYLE", true),
+		S3UseTLS:              parseBoolEnv("S3_USE_TLS", false),
 		ReadTimeout:           15 * time.Second,
 		WriteTimeout:          30 * time.Second,
 		IdleTimeout:           60 * time.Second,

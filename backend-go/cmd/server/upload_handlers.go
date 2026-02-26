@@ -11,9 +11,7 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
-	"os"
 	"path"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -146,12 +144,12 @@ func (a *app) uploadImage(c *gin.Context) {
 	}
 
 	fileName := fmt.Sprintf("%d_%s%s", nowMillis(), uuid.NewString(), normalizeExt(path.Ext(fileHeader.Filename)))
-	absolute := filepath.Join(a.uploadDir, fileName)
-	if err := os.WriteFile(absolute, data, 0o644); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save upload"})
+	storedPath := strings.TrimRight(a.uploadPrefix, "/") + "/" + fileName
+	objectKey := strings.TrimPrefix(storedPath, "/")
+	if err := a.objectStore.Put(ctx, objectKey, mimeByExt(path.Ext(fileHeader.Filename)), data); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to store upload"})
 		return
 	}
-	storedPath := a.uploadPrefix + "/" + fileName
 
 	imageRecord := &domain.Image{
 		PatientID:    patientID,
@@ -238,30 +236,34 @@ func (a *app) imageFile(c *gin.Context) {
 	}
 
 	id := c.Param("id")
-	img, err := a.uploadService.GetImageFileMeta(c.Request.Context(), id, claims.Role, claims.UserID, a.uploadPrefix)
+	img, err := a.uploadService.GetImageFileMeta(c.Request.Context(), id, claims.Role, claims.UserID)
 	if err != nil {
 		switch err.Error() {
 		case "forbidden":
 			c.JSON(http.StatusForbidden, gin.H{"error": "Forbidden"})
-		case "unsupported storage path":
-			c.JSON(http.StatusBadGateway, gin.H{"error": "Unsupported storage path"})
 		default:
 			c.JSON(http.StatusNotFound, gin.H{"error": "Image not found"})
 		}
 		return
 	}
 
-	rel := strings.TrimPrefix(img.FilePath, a.uploadPrefix+"/")
-	absolute := filepath.Join(a.uploadDir, rel)
-	blob, err := os.ReadFile(absolute)
+	objectKey := strings.TrimPrefix(strings.TrimSpace(img.FilePath), "/")
+	if objectKey == "" {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "Invalid storage path"})
+		return
+	}
+	blob, contentType, err := a.objectStore.Get(c.Request.Context(), objectKey)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": "File unavailable"})
 		return
 	}
+	if contentType == "" {
+		contentType = mimeByExt(path.Ext(img.OriginalName))
+	}
 
 	c.Header("Cache-Control", "private, max-age=60")
 	c.Header("Content-Disposition", fmt.Sprintf("inline; filename=\"%s\"", urlEscapeFilename(img.OriginalName)))
-	c.Data(http.StatusOK, mimeByExt(path.Ext(img.OriginalName)), blob)
+	c.Data(http.StatusOK, contentType, blob)
 }
 
 func (a *app) callAI(fileName string, data []byte) (*aiResponse, error) {
