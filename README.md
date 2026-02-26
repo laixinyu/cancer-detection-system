@@ -36,8 +36,9 @@
 
 ```mermaid
 flowchart LR
-  FE[Next.js Front端] --> GW[API Gateway cmd/server]
-  GW --> ORCH[认证 上传 影像编排]
+  FE[Next.js 前端页面] --> BFF[Next.js Route Handlers BFF]
+  BFF --> GW[Go API Gateway cmd/server]
+  GW --> ORCH[认证 上传 影像文件编排]
   GW --> DET[detection-service]
   GW --> REP[report-service]
   GW --> GOV[governance-service]
@@ -45,10 +46,11 @@ flowchart LR
   DET --> DDB[(Detection DB)]
   REP --> RDB[(Report DB)]
   GOV --> VDB[(Governance DB)]
-  GW --> CACHE[(Redis 缓存)]
+  GW --> CACHE[(Redis 查询缓存)]
   GW --> BUS[(Redis Streams 事件总线)]
   ORCH --> OBJ[(S3/MinIO 对象存储)]
   ORCH --> AI[FastAPI AI Service]
+  BUS --> GOV
 ```
 
 约束：前端不允许直连 `ai-service`，必须由后端服务在服务端内网调用 AI。
@@ -61,18 +63,21 @@ flowchart TB
   U2[医生] --> FE
   U3[管理员] --> FE
 
-  FE --> GW[Go API Gateway]
+  FE --> BFF[Next.js Route Handlers]
+  BFF --> GW[Go API Gateway]
   GW --> DET[detection-service]
   GW --> REP[report-service]
   GW --> GOV[governance-service]
-  GW --> REDIS[(Redis Cache + Streams)]
-  GW --> UPLOADS[(S3/MinIO 影像文件)]
+  GW --> CACHE[(Redis Cache)]
+  GW --> BUS[(Redis Streams)]
+  GW --> OBJ[(S3/MinIO 影像对象存储)]
   GW --> AI[FastAPI + ONNX Runtime]
 
   GW --> GDB[(Gateway DB)]
   DET --> DDB[(Detection DB)]
   REP --> RDB[(Report DB)]
   GOV --> VDB[(Governance DB)]
+  BUS --> GOV
   AI --> MODELS[ai-service/models 模型与配置]
 
   NIH[NIH ChestXray14 图像与元数据] --> PREP[prepare_nih_chestxray14.py]
@@ -218,6 +223,20 @@ python ai-service/scripts/evaluate_predictions.py --csv .\your_val.csv --thr-sen
 - ECE（10 bins）
 - 高敏工作点指标
 - 高特工作点指标
+
+### 训练后自动评估与阈值标定（推荐）
+
+一条命令完成：训练 -> 导出验证集预测 -> 任务级评估（肺炎/病灶）-> 生成 `clinical_config.json`
+
+```bash
+npm run train:best -- -RunValidationPipeline
+```
+
+也可独立运行评估流水线：
+
+```bash
+npm run ai:validate -- --dataset-root "E:\datasets\ChestXray-NIHCC-512" --checkpoint "ai-service/models/nih_multitask_efficientnet_v2_s_best.pt" --target-split val
+```
 
 ### 最短路径（只看这个）
 

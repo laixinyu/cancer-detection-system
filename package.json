@@ -11,18 +11,13 @@
     "check:arch": "powershell -ExecutionPolicy Bypass -File scripts/check-frontend-architecture-boundary.ps1",
     "backfill:regions224": "node scripts/backfill-legacy-224-regions.js",
     "repair:uploads": "node scripts/repair-missing-upload-files.js",
-    "train:best": "powershell -ExecutionPolicy Bypass -File ai-service/scripts/train_best.ps1"
+    "train:best": "powershell -ExecutionPolicy Bypass -File ai-service/scripts/train_best.ps1",
+    "train:best:cpu": "powershell -ExecutionPolicy Bypass -File ai-service/scripts/train_best.ps1 -AllowCpu",
+    "ai:validate": "python ai-service/scripts/run_validation_pipeline.py"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.997.0",
     "@prisma/client": "^5.22.0",
-    "@tanstack/react-query": "^5.90.20",
-    "@trpc/client": "^11.10.0",
-    "@trpc/next": "^11.10.0",
-    "@trpc/react-query": "^11.10.0",
-    "@trpc/server": "^11.10.0",
-    "@types/bcryptjs": "^2.4.6",
-    "bcryptjs": "^3.0.3",
     "clsx": "^2.1.1",
     "html2canvas": "^1.4.1",
     "jspdf": "^4.1.0",
@@ -32,7 +27,6 @@
     "react-dom": "19.2.3",
     "react-dropzone": "^14.4.0",
     "recharts": "^3.7.0",
-    "superjson": "^2.2.6",
     "tailwind-merge": "^3.4.0",
     "zod": "^4.3.6"
   },

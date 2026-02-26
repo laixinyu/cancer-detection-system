@@ -29,19 +29,32 @@ docker compose up -d
 ### 3. 初始化数据库
 
 ```bash
-# 生成 Prisma Client
-npx prisma generate
-
-# 执行迁移
-npx prisma migrate dev --name init
+# 首次启动会执行 deploy/postgres/init/*.sql（创建四个服务数据库与最小权限账号）
+# 如需重置数据库初始化（会清空数据）：
+docker compose down -v
+docker compose up -d
 ```
 
-### 4. 环境变量
+### 4. 环境变量（关键）
 
 项目内 `.env` 默认已配置：
-- 数据库：PostgreSQL（localhost:5432）
-- Redis：localhost:6379
-- AI 服务：localhost:8000
+- 网关与三服务独立 DSN：
+  - `GATEWAY_DATABASE_URL`
+  - `DETECTION_DATABASE_URL`
+  - `REPORT_DATABASE_URL`
+  - `GOVERNANCE_DATABASE_URL`
+- Redis：`REDIS_ADDR`
+- AI 服务：`AI_SERVICE_URL`
+- 对象存储（S3/MinIO）：
+  - `STORAGE_BACKEND=s3`
+  - `S3_ENDPOINT`
+  - `S3_REGION`
+  - `S3_BUCKET`
+  - `S3_ACCESS_KEY_ID`
+  - `S3_SECRET_ACCESS_KEY`
+  - `S3_USE_PATH_STYLE`
+  - `S3_USE_TLS`
+  - `UPLOAD_PUBLIC_PREFIX`
 - NextAuth 密钥（生产环境必须替换）
 
 生产环境请先替换密钥：
@@ -50,55 +63,29 @@ npx prisma migrate dev --name init
 openssl rand -base64 32
 ```
 
-### 可选：上传存储切换（本地 / MinIO / S3）
+### 5. 对象存储（S3/MinIO）
 
-默认 local 模式为本地对象存储（MinIO，S3 兼容）：
+当前上传链路已统一为 S3 兼容对象存储，不再依赖本地 `public/uploads`。
 
-```env
-STORAGE_PROVIDER=local
-STORAGE_ENV=dev
-STORAGE_ENV_IN_PREFIX=true
-S3_ENDPOINT=http://127.0.0.1:9000
-S3_REGION=us-east-1
-S3_BUCKET=cancer-images-local
-S3_ACCESS_KEY_ID=minioadmin
-S3_SECRET_ACCESS_KEY=minioadmin
-S3_FORCE_PATH_STYLE=true
-S3_PREFIX=uploads
-```
-
-环境隔离可选配置：
+MinIO 本地开发推荐：
 
 ```env
-S3_BUCKET_DEV=cancer-images-dev
-S3_BUCKET_TEST=cancer-images-test
-S3_BUCKET_PROD=cancer-images-prod
-S3_PREFIX_DEV=uploads
-S3_PREFIX_TEST=uploads
-S3_PREFIX_PROD=uploads
-```
-
-切换到 MinIO / S3：
-
-```env
-STORAGE_PROVIDER=s3
+STORAGE_BACKEND=s3
 S3_ENDPOINT=http://127.0.0.1:9000
 S3_REGION=us-east-1
 S3_BUCKET=cancer-images
 S3_ACCESS_KEY_ID=minioadmin
 S3_SECRET_ACCESS_KEY=minioadmin
-S3_FORCE_PATH_STYLE=true
-S3_PREFIX=uploads
+S3_USE_PATH_STYLE=true
+S3_USE_TLS=false
+UPLOAD_PUBLIC_PREFIX=/uploads
 ```
 
 说明：
-- `S3_ENDPOINT` 留空时即使用 AWS S3 官方端点。
-- MinIO 通常需要 `S3_FORCE_PATH_STYLE=true`。
-- 系统会把数据库中的 `file_path` 存成 `s3://bucket/key`，并通过受控接口返回可访问地址。
-- 如需强制回退到磁盘存储，可设置：
-  `STORAGE_PROVIDER=fs`、`LOCAL_UPLOAD_DIR=./public/uploads`、`LOCAL_UPLOAD_PUBLIC_PREFIX=/uploads`。
+- `S3_USE_PATH_STYLE=true` 对 MinIO 通常是必需的。
+- 影像对外访问仍通过 `/api/v1/images/:id/file`，不会直接暴露桶地址。
 
-### 5. 启动开发服务
+### 6. 启动开发服务
 
 ```bash
 npm run dev
@@ -169,6 +156,12 @@ python scripts/export_torchxrayvision_multitask_to_onnx.py --output ../models/cx
 python scripts/evaluate_predictions.py --csv .\your_val.csv --thr-sens 0.30 --thr-spec 0.70 --out .\eval_report.json
 ```
 
+推荐使用完整流水线（自动导出验证集预测并生成临床阈值配置）：
+
+```bash
+npm run ai:validate -- --dataset-root "E:\datasets\ChestXray-NIHCC-512" --checkpoint "ai-service/models/nih_multitask_efficientnet_v2_s_best.pt" --target-split val
+```
+
 ## 无法使用 Docker 时的本地运行
 
 ```bash
@@ -200,12 +193,16 @@ docker ps
 docker logs cancer-detection-db
 ```
 
-### Prisma 相关报错
+### 对象存储读取失败（`/api/v1/images/:id/file`）
 
 ```bash
-npx prisma generate
-npx prisma migrate reset
+docker logs cancer-detection-backend-go
+docker logs cancer-detection-minio
 ```
+
+检查：
+- `S3_ENDPOINT/S3_BUCKET/S3_ACCESS_KEY_ID/S3_SECRET_ACCESS_KEY` 是否一致
+- `S3_USE_PATH_STYLE` 在 MinIO 下是否为 `true`
 
 ## 常用命令
 
@@ -214,9 +211,9 @@ npm run dev
 npm run build
 npm start
 npm run lint
-npx prisma studio
-npx prisma migrate dev
-npx prisma db push
+npm run check:arch
+docker compose up -d
+docker compose logs -f cancer-detection-backend-go
 ```
 
 ## 技术栈
@@ -224,8 +221,10 @@ npx prisma db push
 - 框架：Next.js（App Router）
 - 语言：TypeScript
 - 样式：Tailwind CSS
-- 数据库：PostgreSQL + Prisma
-- 接口层：tRPC
+- 后端：Go Gin API Gateway + detection/report/governance 微服务
+- 数据库：PostgreSQL（服务级独立 DSN）
+- 缓存与事件：Redis（Cache + Streams）
+- 文件存储：S3/MinIO 对象存储
 - 认证：NextAuth.js
 - 推理服务：FastAPI + ONNX Runtime
 
@@ -233,5 +232,5 @@ npx prisma db push
 
 - 密码使用 bcrypt 哈希存储
 - 生产环境必须启用 HTTPS
-- 使用 Prisma 避免 SQL 注入
+- 服务端参数化查询与输入校验防注入
 - 当前系统为辅助筛查，不可直接用于临床确诊
