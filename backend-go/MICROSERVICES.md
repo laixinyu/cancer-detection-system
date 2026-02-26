@@ -11,7 +11,8 @@
 
 ```mermaid
 graph LR
-  FE[前端 Next.js] --> GW[API Gateway cmd/server]
+  FE[前端 Next.js 页面] --> BFF[Next.js Route Handlers]
+  BFF --> GW[API Gateway cmd/server]
 
   subgraph GatewayBoundary[网关边界]
     GW --> MW[中间件 CORS JWT 超时 限流 追踪 日志]
@@ -39,7 +40,8 @@ graph LR
 ```mermaid
 flowchart LR
   subgraph OnlinePlane[在线业务平面]
-    FE[Next.js] --> GW[Go API Gateway]
+    FE[Next.js 页面] --> BFF[Next.js Route Handlers]
+    BFF --> GW[Go API Gateway]
     GW --> DET[detection-service]
     GW --> REP[report-service]
     GW --> GOV[governance-service]
