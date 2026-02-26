@@ -1,35 +1,66 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import Link from 'next/link'
 import { useSession } from 'next-auth/react'
 import { formatDate, formatFileSize } from '@/lib/utils'
-import { api } from '@/lib/trpc'
 import { useI18n } from '@/components/i18n-provider'
+import { gatewayGet } from '@/lib/gateway-client'
+
+type ImageItem = {
+  id: string
+  filePath: string
+  originalName: string
+  fileType: string
+  fileSize: number
+  status: string
+  createdAt: string
+  updatedAt: string
+  detections: Array<{ cancerProbability: number }>
+}
 
 export default function ImagesPage() {
   const { locale } = useI18n()
   const isZh = locale === 'zh'
-  const { status } = useSession()
-  const { data, isLoading, error } = api.image.list.useQuery(
-    {
-      limit: 100,
-    },
-    {
-      enabled: status === 'authenticated',
-      refetchOnWindowFocus: true,
-    }
-  )
+  const { data: session, status } = useSession()
+  const [images, setImages] = useState<ImageItem[]>([])
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  const images = data?.images ?? []
   const [previewLoadFailed, setPreviewLoadFailed] = useState<Record<string, boolean>>({})
   const [previewImage, setPreviewImage] = useState<{
     filePath: string
     originalName: string
     fileType: string
   } | null>(null)
+
+  useEffect(() => {
+    if (status !== 'authenticated' || !session?.user.accessToken) {
+      return
+    }
+    let active = true
+    setIsLoading(true)
+    setError(null)
+    gatewayGet<{ images: ImageItem[] }>('/images', session.user.accessToken, { limit: 100 })
+      .then((data) => {
+        if (!active) return
+        setImages(data.images ?? [])
+      })
+      .catch((err) => {
+        if (!active) return
+        setError(err instanceof Error ? err.message : 'Failed to load images')
+      })
+      .finally(() => {
+        if (!active) return
+        setIsLoading(false)
+      })
+    return () => {
+      active = false
+    }
+  }, [status, session?.user.accessToken])
+
   const completed = images.filter((image) => image.status === 'COMPLETED').length
   const processing = images.filter((image) => image.status === 'PROCESSING').length
   const failed = images.filter((image) => image.status === 'FAILED').length
@@ -116,7 +147,7 @@ export default function ImagesPage() {
           {status === 'unauthenticated' && (
             <div className="text-center py-8 text-red-600">{isZh ? '登录已失效，请重新登录' : 'Session expired. Please sign in again.'}</div>
           )}
-          {error && <div className="text-center py-8 text-red-600">{error.message}</div>}
+          {error && <div className="text-center py-8 text-red-600">{error}</div>}
 
           {status === 'authenticated' && !isLoading && !error && images.length === 0 && (
             <div className="text-center py-12">

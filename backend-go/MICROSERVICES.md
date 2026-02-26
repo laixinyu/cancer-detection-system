@@ -11,29 +11,50 @@
 
 ```mermaid
 graph LR
-  FE[前端 Next.js] --> GW[网关 cmd_server]
+  FE[前端 Next.js] --> GW[API Gateway cmd/server]
 
-  subgraph 网关
+  subgraph GatewayBoundary[网关边界]
     GW --> MW[中间件 CORS JWT 超时 限流 追踪 日志]
-    MW --> RT[路由分发 api_v1]
-    RT --> AUTH[认证 上传 影像文件]
-    RT --> PX[微服务代理]
-    AUTH --> RS[弹性 熔断与出站限流]
-    AUTH --> OBS[观测 指标 Trace 请求ID]
+    MW --> ORCH[认证 上传 影像编排]
+    MW --> PROXY[严格微服务代理]
+    ORCH --> AI[AI 服务 FastAPI]
+    MW --> CACHE[(Redis 查询缓存)]
+    MW --> GDB[(Gateway DB: GATEWAY_DATABASE_URL)]
+    MW --> BUS[(Redis Streams 事件总线)]
   end
 
-  PX --> DET[检测服务 8081]
-  PX --> REP[报告服务 8082]
-  PX --> GOV[治理服务 8083]
+  PROXY --> DET[detection-service :8081]
+  PROXY --> REP[report-service :8082]
+  PROXY --> GOV[governance-service :8083]
 
-  AUTH --> PG[PostgreSQL]
-  DET --> PG
-  REP --> PG
-  GOV --> PG
-  DET --> CACHE[缓存 memory 或 redis]
-  REP --> CACHE
-  GOV --> CACHE
-  AUTH --> AI[AI 服务 FastAPI]
+  DET --> DDB[(Detection DB: DETECTION_DATABASE_URL)]
+  REP --> RDB[(Report DB: REPORT_DATABASE_URL)]
+  GOV --> VDB[(Governance DB: GOVERNANCE_DATABASE_URL)]
+  ORCH --> OBJ[(Object Storage S3/MinIO)]
+  BUS --> GOV
+```
+
+## 在线与 MLOps 双平面（目标）
+
+```mermaid
+flowchart LR
+  subgraph OnlinePlane[在线业务平面]
+    FE[Next.js] --> GW[Go API Gateway]
+    GW --> DET[detection-service]
+    GW --> REP[report-service]
+    GW --> GOV[governance-service]
+    GW --> AI[FastAPI Runtime]
+    GW --> OBJ[(S3/MinIO)]
+    GW --> BUS[(Redis Streams/Kafka)]
+  end
+
+  subgraph MLOpsPlane[MLOps 平面]
+    DATA[训练数据集] --> TRAIN[Train Pipeline]
+    TRAIN --> EVAL[Offline Eval]
+    EVAL --> REG[Model Registry]
+    REG --> DEPLOY[Model Deploy]
+    DEPLOY --> AI
+  end
 ```
 
 ## AI 调用边界
@@ -165,6 +186,10 @@ graph TB
   - detection：`DETECTION_DATABASE_URL`（必填）
   - report：`REPORT_DATABASE_URL`（必填）
   - governance：`GOVERNANCE_DATABASE_URL`（必填）
+- 本地/容器初始化 SQL：
+  - `deploy/postgres/init/001_microservice_databases.sql`
+  - 作用：创建四个独立数据库与最小权限运行账号，并关闭 `PUBLIC CONNECT`。
+  - 注意：该脚本仅在 PostgreSQL 数据目录首次初始化时执行；若已存在旧 volume，需要先清理 volume 再重建。
 - 建议迁移顺序：
   1. 先配置独立连接串（可先同实例不同 schema）。
   2. 再拆分物理实例与备份策略。

@@ -37,16 +37,18 @@
 ```mermaid
 flowchart LR
   FE[Next.js Front端] --> GW[API Gateway cmd/server]
-  GW --> AUTH[Auth Upload Image]
+  GW --> ORCH[认证 上传 影像编排]
   GW --> DET[detection-service]
   GW --> REP[report-service]
   GW --> GOV[governance-service]
-  AUTH --> DB[(PostgreSQL)]
-  DET --> DB
-  REP --> DB
-  GOV --> DB
-  GOV --> CACHE[(Cache)]
-  AUTH --> AI[FastAPI AI Service]
+  ORCH --> GDB[(Gateway DB)]
+  DET --> DDB[(Detection DB)]
+  REP --> RDB[(Report DB)]
+  GOV --> VDB[(Governance DB)]
+  GW --> CACHE[(Redis 缓存)]
+  GW --> BUS[(Redis Streams 事件总线)]
+  ORCH --> OBJ[(S3/MinIO 对象存储)]
+  ORCH --> AI[FastAPI AI Service]
 ```
 
 约束：前端不允许直连 `ai-service`，必须由后端服务在服务端内网调用 AI。
@@ -55,22 +57,29 @@ flowchart LR
 
 ```mermaid
 flowchart TB
-  U1[患者] --> FE[前端层 Next.js App Router]
+  U1[患者] --> FE[Next.js]
   U2[医生] --> FE
   U3[管理员] --> FE
 
-  FE --> BE[应用层 Next.js API 与 tRPC]
-  BE --> AI[AI 推理层 FastAPI 与 ONNX Runtime]
-  BE --> DB[PostgreSQL + Prisma]
-  BE --> REDIS[Redis]
-  BE --> UPLOADS[public/uploads 影像文件]
+  FE --> GW[Go API Gateway]
+  GW --> DET[detection-service]
+  GW --> REP[report-service]
+  GW --> GOV[governance-service]
+  GW --> REDIS[(Redis Cache + Streams)]
+  GW --> UPLOADS[(S3/MinIO 影像文件)]
+  GW --> AI[FastAPI + ONNX Runtime]
+
+  GW --> GDB[(Gateway DB)]
+  DET --> DDB[(Detection DB)]
+  REP --> RDB[(Report DB)]
+  GOV --> VDB[(Governance DB)]
   AI --> MODELS[ai-service/models 模型与配置]
 
   NIH[NIH ChestXray14 图像与元数据] --> PREP[prepare_nih_chestxray14.py]
   PREP --> TRAIN[train_nih_multitask.py]
   TRAIN --> EXPORT[export_trained_multitask_to_onnx.py]
-  EXPORT --> MODELS
-  MODELS --> BUILD[docker compose build ai-service]
+  EXPORT --> REG[Model Registry]
+  REG --> BUILD[docker compose build ai-service]
   BUILD --> AI
 ```
 
@@ -79,9 +88,9 @@ flowchart TB
 - 在线链路：患者上传 -> 后端编排 -> AI 推理 -> 医生审阅 -> 报告与 PDF 导出。
 - 离线链路：NIH 数据准备 -> 多任务训练 -> ONNX 导出 -> 发布到 `ai-service/models` -> 重建 AI 服务。
 - 前端：Next.js 覆盖患者、医生、管理员三类角色。
-- 后端：Go Gin 负责核心业务接口；Next.js API 作为过渡兼容层（代理到 Gin）；NextAuth 使用 Gin 登录接口完成会话建立。
+- 后端：Go Gin Gateway + detection/report/governance 三服务为唯一业务入口；Next.js 仅承载页面与会话能力。
 - AI 服务：FastAPI 暴露 `/predict` 与 `/health`，输出多任务分数、候选区域与筛查摘要。
-- 数据与存储：PostgreSQL 保存核心业务与治理数据，Redis 用于缓存/扩展，影像保存在 `public/uploads`。
+- 数据与存储：PostgreSQL 按服务拆分（`GATEWAY/DETECTION/REPORT/GOVERNANCE_DATABASE_URL`），Redis 用于缓存与事件流，影像文件目标存储为 S3/MinIO（当前可兼容本地目录）。
 
 ## 快速开始
 
@@ -314,7 +323,7 @@ docker compose logs -f ai-service
 ## 关键路径
 
 - `app/`：Next.js 页面与 API
-- `server/`：tRPC 路由与服务端逻辑
+- `server/`：服务端适配与历史兼容代码（业务主路径已收敛到 Go Gateway）
 - `prisma/schema.prisma`：数据库模型
 - `ai-service/app/main.py`：AI 推理服务
 - `ai-service/scripts/`：模型导出与评估脚本

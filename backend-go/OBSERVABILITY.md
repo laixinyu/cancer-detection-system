@@ -46,9 +46,32 @@
 ## 告警规则建议（Prometheus）
 
 - 5 分钟窗口内 `5xx` 比例过高
-- 10 分钟窗口内 P95 延迟高于 SLO
+- 10 分钟窗口内平均延迟高于 SLO（当前模板）
+- 如引入直方图 bucket，可升级为 P95 延迟告警
 - 5 分钟窗口内 AI 失败率高于阈值
 - `/ready` 连续 3 次检查不通过
+
+可直接复用规则模板：
+
+- `backend-go/ops/alerts/prometheus-microservice-rules.yml`
+
+## 服务级监控接入清单
+
+1. 为四个服务分别创建 scrape job：
+- `api-gateway`
+- `detection-service`
+- `report-service`
+- `governance-service`
+2. 保证每条指标带 `service` 标签，用于服务级 SLO/告警。
+3. 建立四套独立仪表盘（请求量、错误率、延迟、就绪性、依赖状态）。
+4. 将告警按服务 owner 路由到独立值班组。
+
+## 关联文档
+
+- SLO 基线：`backend-go/SLO.md`
+- SLO 模板：`backend-go/ops/templates/SERVICE_SLO_TEMPLATE.md`
+- 故障演练模板：`backend-go/ops/templates/FAILOVER_DRILL_TEMPLATE.md`
+- 演练手册：`backend-go/FAILOVER_DRILL_RUNBOOK.md`
 
 ## 日志关联字段
 

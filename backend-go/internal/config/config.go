@@ -70,9 +70,6 @@ type Config struct {
 func Load() (*Config, error) {
 	dsn := strings.TrimSpace(os.Getenv("GATEWAY_DATABASE_URL"))
 	if dsn == "" {
-		dsn = strings.TrimSpace(os.Getenv("DATABASE_URL"))
-	}
-	if dsn == "" {
 		return nil, fmt.Errorf("GATEWAY_DATABASE_URL is required")
 	}
 

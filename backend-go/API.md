@@ -161,6 +161,11 @@
 - 说明：读取影像二进制内容
 - 返回：文件流（按原始扩展名设置 `Content-Type`）
 
+### `GET /api/v1/images/:id`（需登录）
+
+- 说明：读取单张影像详情（含检测列表、患者概要）
+- 返回：单条影像对象（字段与 `/images` 列表兼容）
+
 ### `GET /api/v1/detections`（需登录）
 
 - 查询参数：
@@ -198,7 +203,44 @@
   - `PENDING -> REVIEWED|CONFIRMED`
   - `REVIEWED -> CONFIRMED`
 
-## 5. 报告接口
+## 5. 用户与合规
+
+### `GET /api/v1/users/me`（需登录）
+
+- 返回：当前登录用户资料
+
+### `PATCH /api/v1/users/me`（需登录）
+
+- 请求体（至少一项）：
+
+```json
+{
+  "name": "new name",
+  "phone": "13800000000"
+}
+```
+
+### `GET /api/v1/compliance/clinical-scope`（需登录）
+
+- 返回：产品临床适用边界说明
+
+### `POST /api/v1/compliance/consents`（需登录）
+
+- 请求体：
+
+```json
+{
+  "consentType": "AI_ANALYSIS",
+  "consentVersion": "v1.0"
+}
+```
+
+### `GET /api/v1/compliance/consents/latest`（需登录）
+
+- 查询参数：`consentType`（默认 `AI_ANALYSIS`）
+- 返回：最新已签署同意记录（可能为 `null`）
+
+## 6. 报告接口
 
 ### `GET /api/v1/reports`（需登录）
 
@@ -243,7 +285,7 @@
 }
 ```
 
-## 6. 治理与运维（管理员）
+## 7. 治理与运维（管理员）
 
 ### `GET /api/v1/audits`（管理员/医生）
 
@@ -315,7 +357,7 @@
 
 - `action`：`ACKNOWLEDGE|RESOLVE|REOPEN`
 
-## 7. 常见错误码
+## 8. 常见错误码
 
 - `400`：请求参数/状态非法
 - `401`：未登录或 token 无效

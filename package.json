@@ -8,6 +8,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "check:arch": "powershell -ExecutionPolicy Bypass -File scripts/check-frontend-architecture-boundary.ps1",
     "backfill:regions224": "node scripts/backfill-legacy-224-regions.js",
     "repair:uploads": "node scripts/repair-missing-upload-files.js",
     "train:best": "powershell -ExecutionPolicy Bypass -File ai-service/scripts/train_best.ps1"

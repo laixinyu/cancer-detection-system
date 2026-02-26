@@ -1,0 +1,71 @@
+groups:
+  - name: cancer-detection-service-alerts
+    rules:
+      - alert: GatewayHigh5xxRate
+        expr: |
+          (
+            sum(rate(app_http_requests_total{service="api-gateway",status=~"5.."}[5m]))
+            /
+            sum(rate(app_http_requests_total{service="api-gateway"}[5m]))
+          ) > 0.01
+        for: 5m
+        labels:
+          severity: critical
+          service: api-gateway
+        annotations:
+          summary: "api-gateway 5xx ratio too high"
+          description: "api-gateway 5xx 比例在 5 分钟窗口超过 1%"
+
+      - alert: DetectionServiceHighAvgLatency
+        expr: |
+          (
+            sum(rate(app_http_request_duration_millis_sum{service="detection-service"}[10m]))
+            /
+            sum(rate(app_http_request_duration_millis_count{service="detection-service"}[10m]))
+          ) > 500
+        for: 10m
+        labels:
+          severity: warning
+          service: detection-service
+        annotations:
+          summary: "detection-service average latency exceeds SLO baseline"
+          description: "detection-service 的平均延迟连续 10 分钟超过 500ms"
+
+      - alert: ReportServiceHighAvgLatency
+        expr: |
+          (
+            sum(rate(app_http_request_duration_millis_sum{service="report-service"}[10m]))
+            /
+            sum(rate(app_http_request_duration_millis_count{service="report-service"}[10m]))
+          ) > 500
+        for: 10m
+        labels:
+          severity: warning
+          service: report-service
+        annotations:
+          summary: "report-service average latency exceeds SLO baseline"
+          description: "report-service 的平均延迟连续 10 分钟超过 500ms"
+
+      - alert: GovernanceServiceHighAvgLatency
+        expr: |
+          (
+            sum(rate(app_http_request_duration_millis_sum{service="governance-service"}[10m]))
+            /
+            sum(rate(app_http_request_duration_millis_count{service="governance-service"}[10m]))
+          ) > 700
+        for: 10m
+        labels:
+          severity: warning
+          service: governance-service
+        annotations:
+          summary: "governance-service average latency exceeds SLO baseline"
+          description: "governance-service 的平均延迟连续 10 分钟超过 700ms"
+
+      - alert: ServiceReadinessFailing
+        expr: up{job=~"api-gateway|detection-service|report-service|governance-service"} == 0
+        for: 3m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.job }} is down"
+          description: "{{ $labels.job }} 连续 3 分钟不可用"

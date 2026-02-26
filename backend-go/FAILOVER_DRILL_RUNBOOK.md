@@ -1,5 +1,9 @@
 # 故障演练 Runbook
 
+标准化记录模板：
+
+- `backend-go/ops/templates/FAILOVER_DRILL_TEMPLATE.md`
+
 ## 场景 1：下游服务不可达
 
 1. 将 `detection-service` 端口临时关闭。
@@ -20,8 +24,7 @@
 3. 恢复权限后验证恢复时间。
 
 ## 复盘模板
-
 1. 触发时间线
 2. 影响范围
-3. 发现与恢复路径
+3. 发现与恢复路径（MTTD/MTTR）
 4. 改进项与 owner

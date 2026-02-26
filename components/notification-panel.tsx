@@ -1,12 +1,12 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { api } from '@/lib/trpc'
 import { useI18n } from '@/components/i18n-provider'
 import { formatDate } from '@/lib/utils'
+import { gatewayGet } from '@/lib/gateway-client'
 
 interface NotificationItem {
   id: string
@@ -17,31 +17,89 @@ interface NotificationItem {
   read: boolean
 }
 
+type AuditItem = {
+  id: string
+  action: string
+  entityType: string
+  entityId: string
+  result: 'SUCCESS' | 'FAILED'
+  createdAt: string
+}
+
+type ReportItem = {
+  id: string
+  status: string
+  updatedAt: string
+  detection: {
+    image: {
+      originalName: string
+    }
+  }
+}
+
+type ImageItem = {
+  id: string
+  status: string
+  originalName: string
+  updatedAt: string
+}
+
 export default function NotificationPanel() {
   const { t } = useI18n()
   const { data: session, status } = useSession()
   const [isOpen, setIsOpen] = useState(false)
   const [readIds, setReadIds] = useState<Set<string>>(new Set())
+  const [audits, setAudits] = useState<AuditItem[]>([])
+  const [reports, setReports] = useState<ReportItem[]>([])
+  const [images, setImages] = useState<ImageItem[]>([])
 
   const role = session?.user.role
   const isStaff = role === 'DOCTOR' || role === 'ADMIN'
 
-  const auditQuery = api.audit.list.useQuery(
-    { limit: 20 },
-    { enabled: status === 'authenticated' && isStaff }
-  )
-  const reportQuery = api.report.list.useQuery(
-    { limit: 20 },
-    { enabled: status === 'authenticated' && !isStaff }
-  )
-  const imageQuery = api.image.list.useQuery(
-    { limit: 20 },
-    { enabled: status === 'authenticated' && !isStaff }
-  )
+  useEffect(() => {
+    if (status !== 'authenticated' || !session?.user.accessToken) {
+      return
+    }
+    let active = true
+    const token = session.user.accessToken
+
+    if (isStaff) {
+      gatewayGet<{ logs: AuditItem[] }>('/audits', token, { limit: 20 })
+        .then((data) => {
+          if (!active) return
+          setAudits(data.logs ?? [])
+        })
+        .catch(() => {
+          if (!active) return
+          setAudits([])
+        })
+      return () => {
+        active = false
+      }
+    }
+
+    Promise.all([
+      gatewayGet<{ reports: ReportItem[] }>('/reports', token, { limit: 20 }),
+      gatewayGet<{ images: ImageItem[] }>('/images', token, { limit: 20 }),
+    ])
+      .then(([reportData, imageData]) => {
+        if (!active) return
+        setReports(reportData.reports ?? [])
+        setImages(imageData.images ?? [])
+      })
+      .catch(() => {
+        if (!active) return
+        setReports([])
+        setImages([])
+      })
+    return () => {
+      active = false
+    }
+  }, [status, session?.user.accessToken, isStaff])
 
   const notifications = useMemo<NotificationItem[]>(() => {
     if (isStaff) {
-      return (auditQuery.data?.logs ?? []).map((log) => {
+      return audits.map((log) => {
         const type: NotificationItem['type'] =
           log.result === 'FAILED'
             ? 'error'
@@ -59,7 +117,7 @@ export default function NotificationPanel() {
       })
     }
 
-    const reportNotifications = (reportQuery.data?.reports ?? []).map((report) => ({
+    const reportNotifications = reports.map((report) => ({
       id: `report-${report.id}`,
       type: report.status === 'FINALIZED' ? ('success' as const) : ('info' as const),
       title:
@@ -71,7 +129,7 @@ export default function NotificationPanel() {
       read: readIds.has(`report-${report.id}`),
     }))
 
-    const imageNotifications = (imageQuery.data?.images ?? []).map((image) => ({
+    const imageNotifications = images.map((image) => ({
       id: `image-${image.id}`,
       type:
         image.status === 'FAILED'
@@ -88,7 +146,7 @@ export default function NotificationPanel() {
     return [...reportNotifications, ...imageNotifications].sort(
       (a, b) => b.timestamp.getTime() - a.timestamp.getTime()
     )
-  }, [isStaff, auditQuery.data?.logs, reportQuery.data?.reports, imageQuery.data?.images, readIds, t])
+  }, [isStaff, audits, reports, images, readIds, t])
 
   const unreadCount = notifications.filter((n) => !n.read).length
 
