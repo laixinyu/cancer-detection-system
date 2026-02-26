@@ -1,6 +1,8 @@
 import os
 import json
 import hashlib
+import logging
+import threading
 from glob import glob
 from io import BytesIO
 from typing import Dict, List, Optional, Tuple
@@ -9,10 +11,12 @@ import cv2
 import numpy as np
 import onnxruntime as ort
 import pydicom
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, Header, HTTPException, Response, UploadFile
 from PIL import Image
 from pydantic import BaseModel
 
+logger = logging.getLogger("ai-service")
+logging.basicConfig(level=os.getenv("AI_LOG_LEVEL", "INFO").upper())
 
 LABEL_PNEUMONIA = "肺炎(Pneumonia)"
 LABEL_NODULE = "结节(Nodule)"
@@ -53,6 +57,7 @@ class PredictResponse(BaseModel):
 
 class ModelRunner:
     def __init__(self) -> None:
+        self._init_lock = threading.RLock()
         self.model_path = os.getenv("AI_MODEL_PATH", "./models/cxr_multitask.onnx")
         self.model_version = os.getenv("AI_MODEL_VERSION", "cxr-multitask-v1")
         self.input_size = int(os.getenv("AI_INPUT_SIZE", "224"))
@@ -96,6 +101,7 @@ class ModelRunner:
         self.governance_min_auroc = float(os.getenv("AI_GOV_MIN_AUROC", "0.90"))
         self.governance_min_sensitivity = float(os.getenv("AI_GOV_MIN_SENSITIVITY", "0.90"))
         self.governance_min_specificity = float(os.getenv("AI_GOV_MIN_SPECIFICITY", "0.85"))
+        self.max_image_pixels = int(os.getenv("AI_MAX_IMAGE_PIXELS", str(16 * 1024 * 1024)))
         self.task_thresholds: Dict[str, Dict[str, float]] = {
             TASK_LESION: {
                 "high_sensitivity_threshold": self.high_sensitivity_threshold,
@@ -136,6 +142,7 @@ class ModelRunner:
         self.model_active_providers: List[str] = []
         self.detector_active_providers: List[str] = []
         self.model_error: Optional[str] = None
+        Image.MAX_IMAGE_PIXELS = self.max_image_pixels
         self._try_load_model()
 
     def _build_session_options(self) -> ort.SessionOptions:
@@ -314,34 +321,47 @@ class ModelRunner:
         return True, f"passed for stage {self.clinical_stage}"
 
     def _try_load_model(self) -> None:
-        self._load_clinical_config()
-        self._load_governance_config()
-        self._load_detector_profile()
-        resolved_path = self._resolve_model_path(self.model_path)
-        if not resolved_path:
-            self.model_error = "No ONNX model file found in configured path or models directory"
-            return
+        with self._init_lock:
+            self._load_clinical_config()
+            self._load_governance_config()
+            self._load_detector_profile()
+            resolved_path = self._resolve_model_path(self.model_path)
+            if not resolved_path:
+                self.model_error = "No ONNX model file found in configured path or models directory"
+                return
 
-        try:
-            so = self._build_session_options()
-            self.session = ort.InferenceSession(
-                resolved_path,
-                sess_options=so,
-                providers=self._build_execution_providers(),
-            )
-            self.input_name = self.session.get_inputs()[0].name
-            self.output_names = [output.name for output in self.session.get_outputs()]
-            self.model_active_providers = list(self.session.get_providers())
-            self.model_path = resolved_path
-            self.model_error = None
-        except Exception as exc:
-            self.model_error = f"Failed to load model: {exc}"
-            self.session = None
-            self.input_name = None
-            self.output_names = []
-            self.model_active_providers = []
+            try:
+                so = self._build_session_options()
+                self.session = ort.InferenceSession(
+                    resolved_path,
+                    sess_options=so,
+                    providers=self._build_execution_providers(),
+                )
+                self.input_name = self.session.get_inputs()[0].name
+                self.output_names = [output.name for output in self.session.get_outputs()]
+                self.model_active_providers = list(self.session.get_providers())
+                self.model_path = resolved_path
+                self.model_error = None
+            except Exception as exc:
+                self.model_error = f"Failed to load model: {exc}"
+                self.session = None
+                self.input_name = None
+                self.output_names = []
+                self.model_active_providers = []
 
-        self._try_load_detector()
+            self._try_load_detector()
+
+    def ensure_ready(self) -> bool:
+        if self.session is None:
+            self._try_load_model()
+        return self.session is not None
+
+    def prediction_allowed(self) -> Tuple[bool, str]:
+        if self.session is None:
+            return False, "model unavailable"
+        if self.enforce_governance_gate and not self.governance_gate_passed:
+            return False, f"governance gate blocked: {self.governance_gate_message}"
+        return True, ""
 
     def _try_load_detector(self) -> None:
         resolved = self._resolve_model_path(self.detector_model_path)
@@ -438,12 +458,20 @@ class ModelRunner:
 
     def preprocess(self, image_bytes: bytes) -> np.ndarray:
         image_np = self._read_grayscale(image_bytes)
+        if image_np.size > self.max_image_pixels:
+            raise ValueError(
+                f"image too large in pixels: {image_np.size} > {self.max_image_pixels}"
+            )
         resized = cv2.resize(image_np, (self.input_size, self.input_size))
         normalized = resized.astype(np.float32) / 255.0
         return normalized
 
     def preprocess_with_original(self, image_bytes: bytes) -> Tuple[np.ndarray, np.ndarray]:
         image_np = self._read_grayscale(image_bytes)
+        if image_np.size > self.max_image_pixels:
+            raise ValueError(
+                f"image too large in pixels: {image_np.size} > {self.max_image_pixels}"
+            )
         resized = cv2.resize(image_np, (self.input_size, self.input_size))
         normalized = resized.astype(np.float32) / 255.0
         return normalized, image_np
@@ -452,15 +480,23 @@ class ModelRunner:
     def _read_grayscale(image_bytes: bytes) -> np.ndarray:
         try:
             image = Image.open(BytesIO(image_bytes)).convert("L")
-            return np.array(image)
+            image_np = np.array(image)
+            if image_np.ndim != 2:
+                raise ValueError("decoded image is not grayscale")
+            return image_np
         except Exception:
             dataset = pydicom.dcmread(BytesIO(image_bytes), force=True)
+            if not hasattr(dataset, "pixel_array"):
+                raise ValueError("DICOM missing pixel data")
             pixels = dataset.pixel_array.astype(np.float32)
             pixels -= pixels.min()
             max_value = float(pixels.max())
             if max_value > 0:
                 pixels /= max_value
-            return (pixels * 255).astype(np.uint8)
+            image_np = (pixels * 255).astype(np.uint8)
+            if image_np.ndim != 2:
+                raise ValueError("decoded DICOM is not 2D grayscale")
+            return image_np
 
     @staticmethod
     def _fallback_lung_mask(image_u8: np.ndarray) -> np.ndarray:
@@ -997,16 +1033,23 @@ class ModelRunner:
 runner = ModelRunner()
 app = FastAPI(title="Cancer Detection AI Service", version="1.1.0")
 MAX_UPLOAD_BYTES = int(os.getenv("AI_MAX_UPLOAD_BYTES", str(10 * 1024 * 1024)))
+REQUIRE_API_KEY = os.getenv("AI_REQUIRE_API_KEY", "false").lower() == "true"
+API_KEY = os.getenv("AI_API_KEY", "").strip()
 
 
 @app.get("/health")
-def health():
-    if runner.session is None:
-        runner._try_load_model()
+def health(response: Response):
+    ready = runner.ensure_ready()
+    allowed, blocked_reason = runner.prediction_allowed()
+    healthy = ready and allowed
+    if not healthy:
+        response.status_code = 503
 
     available_models = sorted([os.path.basename(path) for path in glob("./models/*.onnx")])
     return {
-        "status": "ok",
+        "status": "ok" if healthy else "degraded",
+        "predictionReady": healthy,
+        "predictionBlockedReason": blocked_reason if not healthy else None,
         "modelLoaded": runner.session is not None,
         "modelVersion": runner.model_version,
         "modelPath": runner.model_path,
@@ -1051,9 +1094,18 @@ def health():
 
 
 @app.post("/predict", response_model=PredictResponse)
-async def predict(file: UploadFile = File(...)):
-    if runner.session is None:
-        runner._try_load_model()
+async def predict(file: UploadFile = File(...), x_api_key: Optional[str] = Header(default=None)):
+    if REQUIRE_API_KEY:
+        if not API_KEY:
+            raise HTTPException(status_code=503, detail="API key auth misconfigured")
+        if x_api_key != API_KEY:
+            raise HTTPException(status_code=401, detail="Unauthorized")
+
+    if not runner.ensure_ready():
+        raise HTTPException(status_code=503, detail="Inference model unavailable")
+    allowed, blocked_reason = runner.prediction_allowed()
+    if not allowed:
+        raise HTTPException(status_code=503, detail=blocked_reason)
 
     if not file.content_type:
         raise HTTPException(status_code=400, detail="Missing content type")
@@ -1085,7 +1137,8 @@ async def predict(file: UploadFile = File(...)):
         if not regions and runner.enable_heuristic_regions:
             regions, region_scores = runner.detect_regions(image_original, model_scores)
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Inference failed: {exc}") from exc
+        logger.exception("Inference execution failed")
+        raise HTTPException(status_code=500, detail="Inference execution failed") from exc
 
     merged_scores = {
         label: float(np.clip(max(model_scores.get(label, 0.0), region_scores.get(label, 0.0)), 0.0, 1.0))

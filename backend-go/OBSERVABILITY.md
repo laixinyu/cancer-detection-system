@@ -10,6 +10,7 @@
   - detection/report/governance 服务端提取 trace context
   - 通过 gRPC metadata 透传 `x-request-id` 以便日志关联
 - 指标接口：`GET /metrics`（Prometheus 文本格式）。
+- detection/report/governance 服务同样提供独立 `GET /metrics`。
 - 入站限流与出站熔断/限流（保护下游依赖）。
 - 内置告警日志事件：
   - HTTP `5xx`
@@ -25,6 +26,7 @@
 - `OTEL_EXPORTER_OTLP_ENDPOINT`（例如 `localhost:4318`）
 - `OTEL_SERVICE_NAME`（默认 `cancer-detection-gateway`）
 - `OTEL_TRACE_SAMPLE_RATIO`（默认 `1.0`）
+- `MICROSERVICE_MODE`（`strict|compat`）
 - `INBOUND_RATE_LIMIT_RPS` / `INBOUND_RATE_LIMIT_BURST`
 - `AI_OUTBOUND_RATE_LIMIT_RPS` / `AI_OUTBOUND_RATE_LIMIT_BURST`
 - `UPSTREAM_BREAKER_FAIL_THRESHOLD`
@@ -38,6 +40,8 @@
 - `app_http_request_duration_millis_count{method,route,status}`
 - `app_ai_requests_total`
 - `app_ai_failures_total`
+
+建议按服务实例分别采集与聚合，不再仅看网关维度。
 
 ## 告警规则建议（Prometheus）
 

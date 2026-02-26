@@ -225,6 +225,7 @@ func (a *app) uploadImage(c *gin.Context) {
 	img.Status = "COMPLETED"
 	img.FilePath = "/api/images/" + img.ID + "/file"
 	a.cacheInvalidatePrefixes(c, "detection:list:", "report:list:", "analytics:")
+	a.enqueueOutboxEvent(c)
 
 	c.JSON(http.StatusOK, gin.H{"success": true, "image": img})
 }

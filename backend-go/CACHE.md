@@ -10,6 +10,7 @@
   - `CACHE_BACKEND=redis`
   - `CACHE_BACKEND=memory`
   - `CACHE_BACKEND=noop`
+  - `CACHE_REQUIRED=true|false`（默认 `false`，`true` 时 Redis 不可用将阻止启动）
   - 默认策略：
     - `APP_ENV=production|prod` 且未显式设置 `CACHE_BACKEND` 时，默认 `redis`
     - 其他环境默认 `memory`
@@ -20,13 +21,13 @@
 
 ## 已缓存接口
 
-- `GET /api/v1/detections`
-- `GET /api/v1/reports`
-- `GET /api/v1/audits`
-- `GET /api/v1/analytics/admin-overview`
-- `GET /api/v1/ops/dashboard`
-- `GET /api/v1/ops/evidence`
-- `GET /api/v1/ops/incidents`
+- `GET /api/v1/detections`（本地/gRPC/HTTP 代理模式统一）
+- `GET /api/v1/reports`（本地/gRPC/HTTP 代理模式统一）
+- `GET /api/v1/audits`（本地/gRPC/HTTP 代理模式统一）
+- `GET /api/v1/analytics/admin-overview`（本地/gRPC/HTTP 代理模式统一）
+- `GET /api/v1/ops/dashboard`（本地/gRPC/HTTP 代理模式统一）
+- `GET /api/v1/ops/evidence`（本地/gRPC/HTTP 代理模式统一）
+- `GET /api/v1/ops/incidents`（本地/gRPC/HTTP 代理模式统一）
 
 ## 失效策略
 
@@ -37,6 +38,8 @@
 - 审计日志写入
 - 运维证据创建
 - 运维事件创建 / 状态流转
+
+在 gRPC 桥接与 HTTP 代理模式下，网关会对上述写接口在成功后执行同等前缀失效，避免“仅本地 fallback 生效”的缓存不一致。
 
 ## 缓存边界
 

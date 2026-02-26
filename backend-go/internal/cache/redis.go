@@ -6,6 +6,7 @@ package cache
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -14,6 +15,8 @@ import (
 type RedisCache struct {
 	client *redis.Client
 }
+
+const redisPrefixIndexTTL = 24 * time.Hour
 
 func NewRedis(addr, password string, db int) (*RedisCache, error) {
 	client := redis.NewClient(&redis.Options{
@@ -47,11 +50,27 @@ func (r *RedisCache) Set(ctx context.Context, key string, value []byte, ttl time
 	if ttl <= 0 {
 		ttl = 0
 	}
-	return r.client.Set(ctx, key, value, ttl).Err()
+	prefixes := derivePrefixes(key)
+	pipe := r.client.Pipeline()
+	pipe.Set(ctx, key, value, ttl)
+	for _, prefix := range prefixes {
+		indexKey := prefixIndexKey(prefix)
+		pipe.SAdd(ctx, indexKey, key)
+		pipe.Expire(ctx, indexKey, redisPrefixIndexTTL)
+	}
+	_, err := pipe.Exec(ctx)
+	return err
 }
 
 func (r *RedisCache) Delete(ctx context.Context, key string) error {
-	return r.client.Del(ctx, key).Err()
+	prefixes := derivePrefixes(key)
+	pipe := r.client.Pipeline()
+	pipe.Del(ctx, key)
+	for _, prefix := range prefixes {
+		pipe.SRem(ctx, prefixIndexKey(prefix), key)
+	}
+	_, err := pipe.Exec(ctx)
+	return err
 }
 
 func (r *RedisCache) DeleteByPrefix(ctx context.Context, prefix string) error {
@@ -59,15 +78,28 @@ func (r *RedisCache) DeleteByPrefix(ctx context.Context, prefix string) error {
 		return nil
 	}
 
+	indexKey := prefixIndexKey(prefix)
+	indexedKeys, err := r.client.SMembers(ctx, indexKey).Result()
+	if err != nil {
+		return err
+	}
+	if len(indexedKeys) > 0 {
+		pipe := r.client.Pipeline()
+		pipe.Unlink(ctx, indexedKeys...)
+		pipe.Del(ctx, indexKey)
+		_, err := pipe.Exec(ctx)
+		return err
+	}
+
 	cursor := uint64(0)
 	pattern := prefix + "*"
 	for {
-		keys, nextCursor, err := r.client.Scan(ctx, cursor, pattern, 200).Result()
+		keys, nextCursor, err := r.client.Scan(ctx, cursor, pattern, 500).Result()
 		if err != nil {
 			return err
 		}
 		if len(keys) > 0 {
-			if err := r.client.Del(ctx, keys...).Err(); err != nil {
+			if err := r.client.Unlink(ctx, keys...).Err(); err != nil {
 				return err
 			}
 		}
@@ -76,6 +108,23 @@ func (r *RedisCache) DeleteByPrefix(ctx context.Context, prefix string) error {
 			return nil
 		}
 	}
+}
+
+func prefixIndexKey(prefix string) string {
+	return "cache:index:prefix:" + prefix
+}
+
+func derivePrefixes(key string) []string {
+	if strings.TrimSpace(key) == "" {
+		return nil
+	}
+	prefixes := make([]string, 0, 6)
+	for i := 0; i < len(key); i++ {
+		if key[i] == ':' {
+			prefixes = append(prefixes, key[:i+1])
+		}
+	}
+	return prefixes
 }
 
 func (r *RedisCache) Close() error {

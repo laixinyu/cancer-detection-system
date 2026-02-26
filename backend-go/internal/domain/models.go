@@ -170,3 +170,34 @@ type PatientConsent struct {
 }
 
 func (PatientConsent) TableName() string { return "patient_consents" }
+
+type IdempotencyRecord struct {
+	ID             string    `gorm:"column:id;primaryKey"`
+	Scope          string    `gorm:"column:scope;uniqueIndex:uidx_idem_scope_key,priority:1"`
+	Key            string    `gorm:"column:key;uniqueIndex:uidx_idem_scope_key,priority:2"`
+	RequestHash    string    `gorm:"column:request_hash"`
+	ResponseStatus int       `gorm:"column:response_status"`
+	ResponseBody   []byte    `gorm:"column:response_body"`
+	CreatedAt      time.Time `gorm:"column:created_at"`
+	UpdatedAt      time.Time `gorm:"column:updated_at"`
+	ExpiresAt      time.Time `gorm:"column:expires_at;index"`
+}
+
+func (IdempotencyRecord) TableName() string { return "idempotency_records" }
+
+type OutboxEvent struct {
+	ID             string     `gorm:"column:id;primaryKey"`
+	EventType      string     `gorm:"column:event_type;index"`
+	AggregateType  string     `gorm:"column:aggregate_type;index"`
+	AggregateID    string     `gorm:"column:aggregate_id;index"`
+	Payload        []byte     `gorm:"column:payload"`
+	IdempotencyKey *string    `gorm:"column:idempotency_key"`
+	Status         string     `gorm:"column:status;index"`
+	Attempts       int        `gorm:"column:attempts"`
+	LastError      *string    `gorm:"column:last_error"`
+	PublishedAt    *time.Time `gorm:"column:published_at"`
+	CreatedAt      time.Time  `gorm:"column:created_at"`
+	UpdatedAt      time.Time  `gorm:"column:updated_at"`
+}
+
+func (OutboxEvent) TableName() string { return "outbox_events" }

@@ -4,11 +4,13 @@ package main
 // 用途：网关的处理器、中间件与对外 HTTP API 路由装配。
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"time"
 
 	"cancer-detection-backend/internal/cache"
+	"cancer-detection-backend/internal/events"
 	"cancer-detection-backend/internal/observability"
 	"cancer-detection-backend/internal/repository"
 	"cancer-detection-backend/internal/resilience"
@@ -53,6 +55,14 @@ type app struct {
 	aiLimiter            *resilience.KeyedLimiter
 	upstreamBreakers     *resilience.BreakerGroup
 	tracer               trace.Tracer
+	strictMicroservice   bool
+	idempotencyRepo      repository.IdempotencyRepository
+	outboxRepo           repository.OutboxRepository
+	eventPublisher       events.Publisher
+	relayCancel          context.CancelFunc
+	idempotencyEnabled   bool
+	idempotencyRequired  bool
+	idempotencyTTL       time.Duration
 	detectionGRPCConn    *grpc.ClientConn
 	reportGRPCConn       *grpc.ClientConn
 	governanceGRPCConn   *grpc.ClientConn

@@ -13,6 +13,7 @@ import (
 
 type Config struct {
 	AppEnv                string
+	MicroserviceMode      string
 	Port                  string
 	DatabaseURL           string
 	JWTSecret             string
@@ -24,9 +25,26 @@ type Config struct {
 	ReportServiceGRPC     string
 	GovernanceServiceGRPC string
 	CacheBackend          string
+	CacheRequired         bool
 	RedisAddr             string
 	RedisPassword         string
 	RedisDB               int
+	GRPCInsecure          bool
+	GRPCServerName        string
+	GRPCCACertFile        string
+	EventBusBackend       string
+	EventBusRequired      bool
+	EventBusRedisAddr     string
+	EventBusRedisPassword string
+	EventBusRedisDB       int
+	EventBusRedisStream   string
+	OutboxRelayEnabled    bool
+	OutboxRelayBatch      int
+	OutboxMaxAttempts     int
+	OutboxRelayInterval   time.Duration
+	IdempotencyEnabled    bool
+	IdempotencyRequired   bool
+	IdempotencyTTL        time.Duration
 	UploadDir             string
 	UploadPublicPrefix    string
 	ReadTimeout           time.Duration
@@ -62,8 +80,21 @@ func Load() (*Config, error) {
 
 	appEnv := strings.ToLower(strings.TrimSpace(envOr("APP_ENV", "development")))
 	cacheBackend := strings.ToLower(strings.TrimSpace(os.Getenv("CACHE_BACKEND")))
+	isProd := appEnv == "production" || appEnv == "prod"
+	microserviceMode := strings.ToLower(strings.TrimSpace(envOr("MICROSERVICE_MODE", "")))
+	if microserviceMode == "" {
+		if isProd {
+			microserviceMode = "strict"
+		} else {
+			microserviceMode = "compat"
+		}
+	}
+	if microserviceMode != "strict" && microserviceMode != "compat" {
+		return nil, fmt.Errorf("MICROSERVICE_MODE must be strict or compat")
+	}
+
 	if cacheBackend == "" {
-		if appEnv == "production" || appEnv == "prod" {
+		if isProd {
 			cacheBackend = "redis"
 		} else {
 			cacheBackend = "memory"
@@ -72,6 +103,7 @@ func Load() (*Config, error) {
 
 	cfg := &Config{
 		AppEnv:                appEnv,
+		MicroserviceMode:      microserviceMode,
 		Port:                  envOr("PORT", "8080"),
 		DatabaseURL:           dsn,
 		JWTSecret:             jwtSecret,
@@ -83,9 +115,26 @@ func Load() (*Config, error) {
 		ReportServiceGRPC:     strings.TrimSpace(envOr("REPORT_SERVICE_GRPC_ADDR", "")),
 		GovernanceServiceGRPC: strings.TrimSpace(envOr("GOVERNANCE_SERVICE_GRPC_ADDR", "")),
 		CacheBackend:          cacheBackend,
+		CacheRequired:         parseBoolEnv("CACHE_REQUIRED", false),
 		RedisAddr:             envOr("REDIS_ADDR", "localhost:6379"),
 		RedisPassword:         envOr("REDIS_PASSWORD", ""),
 		RedisDB:               parseNonNegativeIntEnv("REDIS_DB", 0),
+		GRPCInsecure:          parseBoolEnv("GRPC_INSECURE", !isProd),
+		GRPCServerName:        strings.TrimSpace(envOr("GRPC_SERVER_NAME", "")),
+		GRPCCACertFile:        strings.TrimSpace(envOr("GRPC_CA_CERT_FILE", "")),
+		EventBusBackend:       strings.ToLower(strings.TrimSpace(envOr("EVENT_BUS_BACKEND", "log"))),
+		EventBusRequired:      parseBoolEnv("EVENT_BUS_REQUIRED", false),
+		EventBusRedisAddr:     envOr("EVENT_BUS_REDIS_ADDR", "localhost:6379"),
+		EventBusRedisPassword: envOr("EVENT_BUS_REDIS_PASSWORD", ""),
+		EventBusRedisDB:       parseNonNegativeIntEnv("EVENT_BUS_REDIS_DB", 0),
+		EventBusRedisStream:   envOr("EVENT_BUS_REDIS_STREAM", "domain_events"),
+		OutboxRelayEnabled:    parseBoolEnv("OUTBOX_RELAY_ENABLED", true),
+		OutboxRelayBatch:      parseIntEnv("OUTBOX_RELAY_BATCH", 50),
+		OutboxMaxAttempts:     parseIntEnv("OUTBOX_MAX_ATTEMPTS", 8),
+		OutboxRelayInterval:   time.Duration(parseIntEnv("OUTBOX_RELAY_INTERVAL_MS", 1000)) * time.Millisecond,
+		IdempotencyEnabled:    parseBoolEnv("IDEMPOTENCY_ENABLED", true),
+		IdempotencyRequired:   parseBoolEnv("IDEMPOTENCY_REQUIRED", true),
+		IdempotencyTTL:        time.Duration(parseIntEnv("IDEMPOTENCY_TTL_SECONDS", 86400)) * time.Second,
 		UploadDir:             envOr("UPLOAD_DIR", "public/uploads"),
 		UploadPublicPrefix:    strings.TrimRight(envOr("UPLOAD_PUBLIC_PREFIX", "/uploads"), "/"),
 		ReadTimeout:           15 * time.Second,
@@ -108,6 +157,10 @@ func Load() (*Config, error) {
 		TraceSampleRatio:      parseFloatEnv("OTEL_TRACE_SAMPLE_RATIO", 1.0),
 	}
 	return cfg, nil
+}
+
+func (c *Config) StrictMicroserviceMode() bool {
+	return strings.EqualFold(c.MicroserviceMode, "strict")
 }
 
 func (c *Config) Addr() string {

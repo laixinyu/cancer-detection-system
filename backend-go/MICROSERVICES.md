@@ -84,8 +84,44 @@ graph TB
 - 缓存后端由 `CACHE_BACKEND` 决定（`redis|memory|noop`）。
 - 生产环境默认缓存后端为 Redis：
   - `APP_ENV=production|prod` 且未设置 `CACHE_BACKEND` 时，默认 `redis`。
+- Redis 可用性策略：
+  - `CACHE_REQUIRED=false`（默认）：Redis 不可用自动降级到内存缓存并告警。
+  - `CACHE_REQUIRED=true`：Redis 不可用时启动失败（fail-fast）。
 - 缓存只用于读多写少的查询接口（如 detection/report/audit/analytics/ops 列表或概览）。
 - 认证、上传、AI 调用链路不走缓存，保证强一致与安全边界。
+- 网关在本地 handler、gRPC 桥接、HTTP 代理三种路由模式下统一执行缓存命中与写后失效。
+
+## gRPC 传输安全
+
+- 默认策略：
+  - 非生产：`GRPC_INSECURE=true`（便于本地开发）
+  - 生产：`GRPC_INSECURE=false`（默认启用 TLS）
+- TLS 相关配置：
+  - `GRPC_SERVER_NAME`
+  - `GRPC_CA_CERT_FILE`
+
+## 事件与幂等
+
+- 写接口支持 `Idempotency-Key`，默认启用并默认必填：
+  - `IDEMPOTENCY_ENABLED=true|false`
+  - `IDEMPOTENCY_REQUIRED=true|false`
+  - `IDEMPOTENCY_TTL_SECONDS`
+- outbox 异步分发：
+  - `OUTBOX_RELAY_ENABLED=true|false`
+  - `OUTBOX_RELAY_INTERVAL_MS`
+  - `OUTBOX_RELAY_BATCH`
+  - `OUTBOX_MAX_ATTEMPTS`
+- 事件总线：
+  - `EVENT_BUS_BACKEND=log|redis`
+  - `EVENT_BUS_REQUIRED=true|false`
+  - `EVENT_BUS_REDIS_ADDR`
+  - `EVENT_BUS_REDIS_PASSWORD`
+  - `EVENT_BUS_REDIS_DB`
+  - `EVENT_BUS_REDIS_STREAM`
+- 治理服务消费端（可选）：
+  - `EVENT_CONSUMER_ENABLED=true|false`
+  - `EVENT_CONSUMER_GROUP`
+  - `EVENT_CONSUMER_NAME`
 
 ## 追踪与日志关联
 
@@ -109,14 +145,38 @@ graph TB
 - `GOVERNANCE_SERVICE_URL=http://localhost:8083`
 
 如果配置了 gRPC 地址，网关优先走 gRPC 进行服务间调用。  
-如果 gRPC 与 HTTP 地址都未配置，网关会回退到本地 handler 以保持兼容。
+如果 gRPC 与 HTTP 地址都未配置：
+- `MICROSERVICE_MODE=compat`：回退到本地 handler（兼容模式）。
+- `MICROSERVICE_MODE=strict`：返回 `503`，禁止本地回退（真微服务模式）。
+
+## 真微服务模式
+
+- 通过 `MICROSERVICE_MODE` 控制路由策略：
+  - `strict`：要求 detection/report/governance 均配置上游地址，网关不再承载这些域的本地业务实现。
+  - `compat`：保留旧回退路径，便于开发与迁移过渡。
+- 默认值：
+  - 生产（`APP_ENV=production|prod`）默认 `strict`
+  - 非生产默认 `compat`
+
+## 数据边界（迁移入口）
+
+- 每个服务支持独立数据库连接串：
+  - detection：`DETECTION_DATABASE_URL`（必填）
+  - report：`REPORT_DATABASE_URL`（必填）
+  - governance：`GOVERNANCE_DATABASE_URL`（必填）
+- 建议迁移顺序：
+  1. 先配置独立连接串（可先同实例不同 schema）。
+  2. 再拆分物理实例与备份策略。
+  3. 最后移除共享 `DATABASE_URL` 依赖。
 
 ## 当前改造状态
 
 - ORM 模型已统一下沉至 `internal/domain`。
 - 业务 handler 已按 `repository/service/handler` 三层拆分并通过 DI 装配。
 - detection/report/governance 三个服务已统一 HTTP+gRPC 生命周期与优雅关闭。
-- 当未配置上游地址时，网关保留本地回退 handler 以兼容旧链路。
+- 网关可通过 `MICROSERVICE_MODE` 在“兼容回退”与“严格微服务”之间切换。
+- 网关写请求支持 `Idempotency-Key` 幂等。
+- 网关写请求会写入 outbox，并异步发布到事件总线（log/redis）。
 
 ## 可观测性
 

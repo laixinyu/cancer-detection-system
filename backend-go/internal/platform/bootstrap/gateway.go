@@ -62,10 +62,15 @@ func BuildGateway(ctx context.Context, cfg *config.Config) (*GatewayDependencies
 	case "redis":
 		rc, cacheErr := cache.NewRedis(cfg.RedisAddr, cfg.RedisPassword, cfg.RedisDB)
 		if cacheErr != nil {
-			db.Close()
-			return nil, fmt.Errorf("init redis cache: %w", cacheErr)
+			if cfg.CacheRequired {
+				db.Close()
+				return nil, fmt.Errorf("init redis cache: %w", cacheErr)
+			}
+			slog.Warn("redis unavailable, fallback to in-memory cache", "error", cacheErr.Error())
+			appCache = cache.NewMemory()
+		} else {
+			appCache = rc
 		}
-		appCache = rc
 	case "memory":
 		appCache = cache.NewMemory()
 	default:
